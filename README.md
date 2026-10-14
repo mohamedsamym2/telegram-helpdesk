@@ -1,3 +1,13 @@
+---
+title: IT Support Helpdesk
+emoji: 🎫
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # نظام تذاكر الدعم الفني عبر التيليجرام 🎫
 
 نظام داخلي متكامل لإدارة التذاكر والدعم الفني للشركات الصغيرة عبر بوت تيليجرام مع لوحة تحكم ويب محلية.
