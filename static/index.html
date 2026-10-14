@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Support Helpdesk | Telegram Ticketing System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Login Screen Overlay (Shown when unauthenticated) -->
+    <div id="login-overlay" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-8 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                    <i class="fa-solid fa-headset text-white text-2xl"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white tracking-tight">IT Support Desk</h2>
+                <p class="text-xs text-slate-400">Please sign in to access the ticket dashboard</p>
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                        <input type="text" id="login-username" required placeholder="admin" 
+                               class="w-full bg-slate-800/90 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                        <input type="password" id="login-password" required placeholder="••••••••" 
+                               class="w-full bg-slate-800/90 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition">
+                    </div>
+                </div>
+
+                <div id="login-error" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <span id="login-error-text">Invalid username or password</span>
+                </div>
+
+                <button type="submit" id="login-btn" 
+                        class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/25 transition active:scale-[0.98] flex items-center justify-center gap-2">
+                    <span>Sign In</span>
+                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+            </form>
+
+            <div class="text-center">
+                <span class="text-[11px] text-slate-500 font-mono">Default credentials: admin / admin123</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 bg-slate-850 border-b border-slate-800 px-6 flex items-center justify-between shadow-md shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-headset text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base leading-tight text-white flex items-center gap-2">
+                    IT Support Helpdesk
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium font-mono">Telegram Bot</span>
+                </h1>
+                <p class="text-xs text-slate-400">Manage support tickets & private direct user communication</p>
+            </div>
+        </div>
+
+        <!-- Quick Stats & Actions -->
+        <div class="flex items-center gap-3">
+            <!-- Bot Status Pill -->
+            <div id="bot-status-container" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs">
+                <span id="bot-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span id="bot-status-text" class="text-slate-300 font-medium text-[11px]">Connecting to Bot...</span>
+            </div>
+
+            <!-- Sound Notification Toggle -->
+            <button id="sound-toggle-btn" onclick="toggleSound()" title="Toggle Notification Chime" 
+                    class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 transition">
+                <i id="sound-icon" class="fa-solid fa-volume-high"></i>
+            </button>
+
+            <!-- Settings / Token Button -->
+            <button onclick="openTokenModal()" title="Bot Configuration" 
+                    class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 transition">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+
+            <!-- Users Management Button -->
+            <button onclick="openUsersModal()" title="Manage Users & Team" 
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold transition">
+                <i class="fa-solid fa-users-gear text-indigo-400"></i>
+                <span>Users</span>
+            </button>
+
+            <!-- Account Settings Button -->
+            <button onclick="openAccountModal()" title="My Account" 
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold transition">
+                <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                <span id="nav-username">Admin</span>
+            </button>
+
+            <!-- Logout Button -->
+            <button onclick="handleLogout()" title="Sign Out" 
+                    class="w-9 h-9 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center transition">
+                <i class="fa-solid fa-right-from-bracket text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Sidebar: Ticket List -->
+        <aside class="w-96 bg-slate-850 border-r border-slate-800 flex flex-col shrink-0 bg-slate-900/60">
+            <!-- Filter & Search Toolbar -->
+            <div class="p-4 border-b border-slate-800 space-y-3">
+                <!-- Search Input -->
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                    <input type="text" id="ticket-search" oninput="handleSearch(this.value)" placeholder="Search by ticket #, user, phone, issue..." 
+                           class="w-full bg-slate-800/90 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Status Filter Badges -->
+                <div class="flex items-center justify-between gap-1 text-xs">
+                    <button onclick="setFilter('all')" id="filter-all" class="filter-tab active flex-1 py-1.5 rounded-lg text-center font-medium transition">
+                        All <span id="count-total" class="opacity-80 text-[10px] ml-1">(0)</span>
+                    </button>
+                    <button onclick="setFilter('open')" id="filter-open" class="filter-tab flex-1 py-1.5 rounded-lg text-center font-medium transition">
+                        Open <span id="count-open" class="opacity-80 text-[10px] ml-1">(0)</span>
+                    </button>
+                    <button onclick="setFilter('in_progress')" id="filter-in_progress" class="filter-tab flex-1 py-1.5 rounded-lg text-center font-medium transition">
+                        Progress <span id="count-in_progress" class="opacity-80 text-[10px] ml-1">(0)</span>
+                    </button>
+                    <button onclick="setFilter('closed')" id="filter-closed" class="filter-tab flex-1 py-1.5 rounded-lg text-center font-medium transition">
+                        Closed <span id="count-closed" class="opacity-80 text-[10px] ml-1">(0)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tickets Scrollable List -->
+            <div id="tickets-container" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 custom-scroll">
+                <!-- Empty placeholder state initially -->
+                <div class="h-64 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+                    <i class="fa-solid fa-inbox text-4xl mb-3 text-slate-600"></i>
+                    <p class="text-xs font-medium">No tickets found</p>
+                    <p class="text-[11px] text-slate-600 mt-1">When users message the group or bot, tickets appear here</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Side: Ticket Detail & Live Chat -->
+        <main class="flex-1 flex flex-col bg-slate-900 overflow-hidden relative">
+            
+            <!-- When NO Ticket is selected -->
+            <div id="no-ticket-selected" class="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center">
+                <div class="w-20 h-20 rounded-2xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-3xl text-indigo-400 mb-4 shadow-xl">
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-300">Select a ticket to view conversation</h3>
+                <p class="text-xs text-slate-500 max-w-sm mt-1 leading-relaxed">
+                    Replies are delivered <b class="text-indigo-400">privately</b> to the user in their direct 1-on-1 Telegram chat. Closed tickets are locked and cannot be reopened.
+                </p>
+            </div>
+
+            <!-- Active Ticket Workspace -->
+            <div id="ticket-chat-panel" class="hidden flex-1 flex flex-col overflow-hidden">
+                
+                <!-- Ticket Info Top Header -->
+                <div class="h-20 bg-slate-850 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-slate-500/40 flex items-center justify-center text-lg font-bold text-white shadow">
+                            <span id="current-user-avatar">U</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 id="current-user-name" class="font-bold text-base text-white">User Name</h2>
+                                <span id="current-ticket-number" class="text-xs px-2 py-0.5 rounded font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">#TK-1001</span>
+                                <span id="current-chat-type" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1 font-mono">
+                                    <i class="fa-solid fa-users text-[9px]"></i> IT Support Group
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
+                                <!-- Phone display -->
+                                <span class="flex items-center gap-1.5 text-emerald-400 font-mono text-[11px]">
+                                    <i class="fa-solid fa-phone text-[10px]"></i>
+                                    <span id="current-user-phone">No phone recorded</span>
+                                </span>
+                                <span class="text-slate-600">•</span>
+                                <!-- Telegram username -->
+                                <span id="current-user-username" class="text-slate-400 font-mono text-[11px]">@username</span>
+                                <span class="text-slate-600">•</span>
+                                <!-- Created time -->
+                                <span id="current-ticket-time" class="text-slate-500 text-[11px]">10m ago</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Change & Actions -->
+                    <div class="flex items-center gap-2.5">
+                        <!-- Manual Phone Edit Button -->
+                        <button onclick="promptEditPhone()" title="Edit Phone Number" 
+                                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span>Edit Phone</span>
+                        </button>
+
+                        <!-- Status Actions (Resolve & Close Button or Locked Pill) -->
+                        <div id="status-container" class="flex items-center gap-2">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Messages Scroll Area -->
+                <div id="messages-container" class="flex-1 overflow-y-auto p-6 space-y-4 custom-scroll">
+                    <!-- Messages will be injected here via app.js -->
+                </div>
+
+                <!-- Quick Canned Replies Bar (hidden if closed) -->
+                <div id="canned-bar" class="px-6 py-2 bg-slate-850/60 border-t border-slate-800 flex items-center gap-2 overflow-x-auto text-[11px]">
+                    <span class="text-slate-500 shrink-0 font-medium"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Quick replies:</span>
+                    <button onclick="insertTemplate('We have received your issue and our technical team is investigating now.')" class="canned-btn">Investigating</button>
+                    <button onclick="insertTemplate('Please restart your computer/device and check if the issue persists.')" class="canned-btn">Restart & Check</button>
+                    <button onclick="insertTemplate('The issue has been resolved. Please test and confirm.')" class="canned-btn">Resolved, Please Confirm</button>
+                    <button onclick="insertTemplate('Could you please provide a screenshot or exact error message?')" class="canned-btn">Request Screenshot</button>
+                </div>
+
+                <!-- Message Reply Input Box -->
+                <div id="reply-container" class="p-4 bg-slate-850 border-t border-slate-800 shrink-0">
+                    <form id="reply-form" onsubmit="sendReply(event)" class="space-y-2">
+                        <div class="relative">
+                            <textarea id="reply-text" rows="3" placeholder="Type your reply here... Delivered PRIVATELY to the user in their 1-on-1 chat"
+                                      class="w-full bg-slate-800/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none transition leading-relaxed"></textarea>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 text-[11px] text-slate-400">
+                                <span class="flex items-center gap-1.5 text-indigo-400 font-medium">
+                                    <i class="fa-solid fa-lock text-[10px]"></i>
+                                    Sent privately to user (not in group)
+                                </span>
+                                <span class="text-slate-600">•</span>
+                                <span class="text-slate-500">Press <b>Ctrl+Enter</b> to send</span>
+                            </div>
+                            <button type="submit" id="send-reply-btn" 
+                                    class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition active:scale-95">
+                                <span>Send Private Reply</span>
+                                <i class="fa-solid fa-paper-plane text-xs"></i>
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div id="reply-locked-notice" class="hidden p-3 rounded-xl bg-slate-800 border border-slate-700/80 text-slate-400 text-xs text-center">
+                        <i class="fa-solid fa-lock text-slate-500 mr-1.5"></i>
+                        This ticket is resolved and closed. It cannot receive further replies. Any new message from the user will open a new ticket.
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Users Management Modal -->
+    <div id="users-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-users-gear text-indigo-400 text-base"></i>
+                    Team & User Management
+                </h3>
+                <button onclick="closeUsersModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <!-- Existing Users List -->
+            <div class="space-y-2">
+                <h4 class="text-xs font-semibold text-slate-300">Registered Users</h4>
+                <div id="users-list-container" class="bg-slate-900 border border-slate-700/80 rounded-xl divide-y divide-slate-800/80 max-h-48 overflow-y-auto custom-scroll">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <!-- Add New User Form -->
+            <div class="border-t border-slate-700/80 pt-4 space-y-3">
+                <h4 class="text-xs font-semibold text-slate-300">Add New Team Member</h4>
+                <form onsubmit="handleAddUser(event)" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-400 mb-1">Username</label>
+                            <input type="text" id="new-user-username" required placeholder="john.doe" 
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-400 mb-1">Password</label>
+                            <input type="password" id="new-user-password" required placeholder="••••••••" 
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+
+                    <div id="create-user-error" class="hidden p-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs"></div>
+
+                    <div class="flex items-center justify-end gap-2 pt-1">
+                        <button type="button" onclick="closeUsersModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">Cancel</button>
+                        <button type="submit" id="add-user-btn" class="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-plus text-[10px]"></i>
+                            <span>Create User</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bot Token Settings Modal -->
+    <div id="token-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-brands fa-telegram text-sky-400 text-base"></i>
+                    Telegram Bot Token Configuration
+                </h3>
+                <button onclick="closeTokenModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <div class="text-xs text-slate-300 space-y-2 leading-relaxed">
+                <p>Paste your Telegram <b>API Token</b> obtained from <b>@BotFather</b> to connect the bot service.</p>
+                <div class="p-3 bg-slate-900 rounded-lg border border-slate-700 font-mono text-[11px] text-slate-400 break-all select-all">
+                    Example: 8825356962:AAH-IwHd43WBNSp34un-RVoQD2w3IjKwlbs
+                </div>
+            </div>
+
+            <form onsubmit="saveToken(event)" class="space-y-4 pt-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Bot Token</label>
+                    <input type="text" id="token-input" required placeholder="Paste bot token here..." 
+                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div id="token-error" class="hidden p-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs"></div>
+
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeTokenModal()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">Cancel</button>
+                    <button type="submit" id="save-token-btn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition">Save & Connect</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Account Settings Modal (Change Password) -->
+    <div id="account-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-user-shield text-indigo-400 text-base"></i>
+                    Change Password
+                </h3>
+                <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <form onsubmit="saveCredentials(event)" class="space-y-3.5 pt-1">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Current Password</label>
+                    <input type="password" id="curr-password" required placeholder="••••••••" 
+                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">New Password</label>
+                    <input type="password" id="new-password" required placeholder="••••••••" 
+                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div id="account-error" class="hidden p-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs"></div>
+                <div id="account-success" class="hidden p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs"></div>
+
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeAccountModal()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">Close</button>
+                    <button type="submit" id="save-account-btn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition">Update Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Zoom Modal -->
+    <div id="image-modal" onclick="closeImageModal()" class="hidden fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-pointer">
+        <img id="image-modal-src" src="" alt="Enlarged screenshot" class="max-h-[90vh] max-w-[90vw] rounded-xl shadow-2xl border border-slate-700 object-contain">
+    </div>
+
+    <!-- App JS -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

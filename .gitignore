@@ -1,0 +1,27 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller & Inno Setup outputs
+build/
+dist/
+installer_output/
+*.spec
+
+# Local database and env
+helpdesk.db
+.env
+
+# Uploads directory contents except placeholder
+static/uploads/*
+!static/uploads/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
