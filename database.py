@@ -202,7 +202,13 @@ def init_db():
     
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_user_status ON tickets(telegram_user_id, status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_ticket_id ON messages(ticket_id)")
-    
+    # Ensure default telegram bot token if not set
+    default_token = os.getenv("TELEGRAM_BOT_TOKEN", "8825356962:AAH-IwHd43WBNSp34un-RVoQD2w3IjKwlbs").strip()
+    cursor.execute("SELECT value FROM settings WHERE key = 'telegram_bot_token'")
+    row = cursor.fetchone()
+    if not row or not row["value"]:
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram_bot_token', ?)", (default_token,))
+
     conn.commit()
     conn.close()
     

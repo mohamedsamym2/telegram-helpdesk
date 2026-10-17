@@ -22,6 +22,11 @@ helpdesk.db
 static/uploads/*
 !static/uploads/.gitkeep
 
+# Logs
+*.log
+run_log.txt
+
 # IDE files
 .vscode/
 .idea/
+

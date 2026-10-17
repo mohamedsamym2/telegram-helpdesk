@@ -37,7 +37,7 @@ class TelegramBot:
     def get_token(self) -> str:
         token = get_setting("telegram_bot_token", "")
         if not token:
-            token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+            token = os.getenv("TELEGRAM_BOT_TOKEN", "8825356962:AAH-IwHd43WBNSp34un-RVoQD2w3IjKwlbs").strip()
         return token.strip()
 
     def set_token(self, token: str):

@@ -2,7 +2,49 @@ import asyncio
 import os
 import csv
 import io
+import sys
 from contextlib import asynccontextmanager
+
+if getattr(sys, 'frozen', False):
+    LOG_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+LOG_FILE = os.path.join(LOG_DIR, "helpdesk.log")
+
+class SafeLogger:
+    def __init__(self, stream, log_path):
+        self.stream = stream
+        self.log_path = log_path
+        self.encoding = "utf-8"
+
+    def isatty(self):
+        return False
+
+    def write(self, buf):
+        if buf:
+            try:
+                with open(self.log_path, "a", encoding="utf-8") as f:
+                    f.write(buf)
+            except Exception:
+                pass
+        if self.stream is not None:
+            try:
+                self.stream.write(buf)
+                self.stream.flush()
+            except Exception:
+                pass
+
+    def flush(self):
+        if self.stream is not None:
+            try:
+                self.stream.flush()
+            except Exception:
+                pass
+
+sys.stdout = SafeLogger(sys.stdout, LOG_FILE)
+sys.stderr = SafeLogger(sys.stderr, LOG_FILE)
+
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
 from fastapi.responses import FileResponse, JSONResponse
