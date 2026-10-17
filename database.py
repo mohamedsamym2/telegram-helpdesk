@@ -5,7 +5,11 @@ import secrets
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-DB_DIR = os.path.dirname(os.path.abspath(__file__))
+import sys
+if getattr(sys, 'frozen', False):
+    DB_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    DB_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(DB_DIR, "helpdesk.db")
 
 def get_db():

@@ -50,8 +50,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="IT Support Helpdesk API", lifespan=lifespan)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+import sys
+if getattr(sys, 'frozen', False):
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    meipass = getattr(sys, '_MEIPASS', exe_dir)
+    if os.path.exists(os.path.join(exe_dir, "static", "index.html")):
+        STATIC_DIR = os.path.join(exe_dir, "static")
+    elif os.path.exists(os.path.join(meipass, "static", "index.html")):
+        STATIC_DIR = os.path.join(meipass, "static")
+    else:
+        STATIC_DIR = os.path.join(exe_dir, "static")
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    STATIC_DIR = os.path.join(BASE_DIR, "static")
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Auth Dependency
@@ -332,4 +344,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8080))
     host = os.getenv("HOST", "0.0.0.0")
-    uvicorn.run("server:app", host=host, port=port, reload=False)
+    uvicorn.run(app, host=host, port=port)
