@@ -220,70 +220,71 @@
             <!-- Active Ticket Workspace -->
             <div id="ticket-chat-panel" class="hidden flex-1 flex flex-col overflow-hidden">
                 
-                <!-- Ticket Info Top Header -->
-                <div class="h-20 bg-slate-850 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
-                    <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-slate-500/40 flex items-center justify-center text-lg font-bold text-white shadow">
-                            <span id="current-user-avatar">U</span>
+                <!-- Ticket Info Top Header (Modern 2-Tier Structured Layout) -->
+                <div class="bg-slate-850/95 border-b border-slate-800/80 shrink-0 shadow-sm">
+                    <!-- Tier 1: Identity & Primary Status Actions -->
+                    <div class="px-6 py-3.5 flex items-center justify-between border-b border-slate-800/50">
+                        <div class="flex items-center gap-3.5 min-w-0">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-800 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-white shadow-md shadow-indigo-950/40 shrink-0">
+                                <span id="current-user-avatar">U</span>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h2 id="current-user-name" class="font-bold text-base text-slate-100 truncate leading-snug">User Name</h2>
+                                    <span id="current-ticket-number" class="text-xs px-2.5 py-0.5 rounded-md font-mono bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 font-bold whitespace-nowrap shadow-sm">#TK-1001</span>
+                                    <span id="current-chat-type" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700/80 flex items-center gap-1.5 font-mono whitespace-nowrap">
+                                        <i class="fa-solid fa-users text-[9px] text-purple-400"></i> IT Support Group
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2.5 text-[11px] text-slate-400 mt-0.5">
+                                    <span id="current-user-username" class="text-slate-400 font-mono">@username</span>
+                                    <span class="text-slate-600">•</span>
+                                    <span id="current-ticket-time" class="text-slate-400">10m ago</span>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <h2 id="current-user-name" class="font-bold text-base text-white">User Name</h2>
-                                <span id="current-ticket-number" class="text-xs px-2 py-0.5 rounded font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">#TK-1001</span>
-                                <span id="current-chat-type" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1 font-mono">
-                                    <i class="fa-solid fa-users text-[9px]"></i> IT Support Group
-                                </span>
-                            </div>
-                            <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                                <!-- Phone display -->
-                                <span class="flex items-center gap-1.5 text-emerald-400 font-mono text-[11px]">
-                                    <i class="fa-solid fa-phone text-[10px]"></i>
-                                    <span id="current-user-phone">No phone recorded</span>
-                                </span>
-                                <span class="text-slate-600">•</span>
-                                <!-- Telegram username -->
-                                <span id="current-user-username" class="text-slate-400 font-mono text-[11px]">@username</span>
-                                <span class="text-slate-600">•</span>
-                                <!-- Created time -->
-                                <span id="current-ticket-time" class="text-slate-500 text-[11px]">10m ago</span>
-                            </div>
+
+                        <!-- Right: Main Status Action Button (Resolve & Close or Reopen) -->
+                        <div id="status-container" class="flex items-center gap-2 shrink-0">
+                            <!-- Populated dynamically via JS -->
                         </div>
                     </div>
 
-                    <!-- Status Change & Actions -->
-                    <div class="flex items-center gap-2">
-                        <!-- Priority Selector -->
-                        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700/80 text-xs">
-                            <i class="fa-solid fa-flag text-[10px] text-slate-400"></i>
-                            <select id="ticket-priority-select" onchange="handlePriorityChange(this.value)" class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer text-slate-200">
-                                <option value="low" class="bg-slate-800 text-slate-300">Low (48h)</option>
-                                <option value="medium" class="bg-slate-800 text-sky-400" selected>Medium (24h)</option>
-                                <option value="high" class="bg-slate-800 text-amber-400">High (6h)</option>
-                                <option value="critical" class="bg-slate-800 text-rose-400">Critical (2h)</option>
-                            </select>
+                    <!-- Tier 2: Dedicated Ticket Properties Toolbar -->
+                    <div class="px-6 py-2 bg-slate-900/60 flex items-center justify-between text-xs overflow-x-auto gap-4 custom-scroll border-t border-slate-800/30">
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <!-- Priority Selector -->
+                            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] hover:border-slate-600 transition whitespace-nowrap shadow-sm">
+                                <span class="text-slate-400 font-medium flex items-center gap-1"><i class="fa-solid fa-flag text-[9px] text-slate-400"></i>Priority:</span>
+                                <select id="ticket-priority-select" onchange="handlePriorityChange(this.value)" class="bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer text-slate-200">
+                                    <option value="low" class="bg-slate-800 text-slate-300">Low (48h)</option>
+                                    <option value="medium" class="bg-slate-800 text-sky-400" selected>Medium (24h)</option>
+                                    <option value="high" class="bg-slate-800 text-amber-400">High (6h)</option>
+                                    <option value="critical" class="bg-slate-800 text-rose-400">Critical (2h)</option>
+                                </select>
+                            </div>
+
+                            <!-- SLA Countdown Badge -->
+                            <div id="ticket-sla-badge" class="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] font-mono flex items-center gap-1.5 text-slate-300 whitespace-nowrap shadow-sm">
+                                <i class="fa-solid fa-clock text-[10px] text-indigo-400"></i>
+                                <span id="ticket-sla-text" class="whitespace-nowrap">SLA: Calculating...</span>
+                            </div>
+
+                            <!-- Assignee Selector -->
+                            <div id="assignment-container" class="flex items-center gap-1.5 whitespace-nowrap">
+                                <!-- Populated dynamically via JS -->
+                            </div>
                         </div>
 
-                        <!-- SLA Countdown Badge -->
-                        <div id="ticket-sla-badge" class="px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs font-mono flex items-center gap-1.5 text-slate-300">
-                            <i class="fa-solid fa-clock text-[10px] text-indigo-400"></i>
-                            <span id="ticket-sla-text">SLA: Calculating...</span>
-                        </div>
-
-                        <!-- Assignee Controls (Claim / Select Agent) -->
-                        <div id="assignment-container" class="flex items-center gap-1.5">
-                            <!-- Populated dynamically via JS -->
-                        </div>
-
-                        <!-- Manual Phone Edit Button -->
-                        <button onclick="promptEditPhone()" title="Edit Phone Number" 
-                                class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs flex items-center gap-1.5 transition">
-                            <i class="fa-solid fa-phone text-[10px]"></i>
-                            <span>Phone</span>
-                        </button>
-
-                        <!-- Status Actions (Resolve & Close Button or Locked Pill) -->
-                        <div id="status-container" class="flex items-center gap-1.5">
-                            <!-- Populated dynamically via JS -->
+                        <!-- Right: User Phone Quick Access -->
+                        <div class="flex items-center gap-2 shrink-0">
+                            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] text-emerald-400 font-mono whitespace-nowrap shadow-sm">
+                                <i class="fa-solid fa-phone text-[9px]"></i>
+                                <span id="current-user-phone">No phone recorded</span>
+                                <button onclick="promptEditPhone()" title="Edit Phone Number" class="ml-1 text-slate-400 hover:text-slate-200 transition">
+                                    <i class="fa-solid fa-pen text-[9px]"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -443,7 +443,7 @@ function renderSlaBadge(ticket) {
     
     const sla = getSlaInfo(ticket);
     textEl.textContent = `SLA: ${sla.text}`;
-    badgeEl.className = `px-2.5 py-1.5 rounded-xl border text-xs font-mono flex items-center gap-1.5 ${sla.badgeClass}`;
+    badgeEl.className = `px-2.5 py-1 rounded-lg border text-[11px] font-mono flex items-center gap-1.5 whitespace-nowrap shadow-sm ${sla.badgeClass}`;
 }
 
 function getPriorityBadge(prio) {
@@ -606,12 +606,12 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
 
         if (isLocked) {
             statusContainer.innerHTML = `
-                <div class="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+                <div class="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shadow-sm">
                     <i class="fa-solid fa-lock text-[10px]"></i>
                     <span>Resolved & Closed</span>
                 </div>
                 <button onclick="changeStatus('in_progress')" title="Reopen this ticket" 
-                        class="px-3 py-1.5 rounded-xl bg-amber-600/80 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95">
+                        class="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95 whitespace-nowrap">
                     <i class="fa-solid fa-rotate-left text-[10px]"></i>
                     <span>Reopen</span>
                 </button>
@@ -625,14 +625,14 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
             let progressBtn = '';
             if (ticket.status === 'open') {
                 progressBtn = `
-                    <button onclick="changeStatus('in_progress')" class="px-3 py-1.5 rounded-xl bg-sky-600/80 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1.5 transition">
+                    <button onclick="changeStatus('in_progress')" class="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap shadow-sm">
                         <i class="fa-solid fa-spinner"></i>
                         <span>In Progress</span>
                     </button>
                 `;
             } else {
                 progressBtn = `
-                    <span class="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold">
+                    <span class="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[11px] font-semibold whitespace-nowrap shadow-sm">
                         In Progress
                     </span>
                 `;
@@ -640,7 +640,7 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
 
             statusContainer.innerHTML = `
                 ${progressBtn}
-                <button onclick="changeStatus('closed')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95">
+                <button onclick="changeStatus('closed')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95 whitespace-nowrap">
                     <i class="fa-solid fa-circle-check"></i>
                     <span>Resolve & Close</span>
                 </button>
@@ -697,36 +697,34 @@ function renderAssignmentControls(ticket) {
 
     const assignedTo = ticket.assigned_to;
 
-    let userOptions = `<option value="">-- Assign/Reassign --</option><option value="">Unassigned (Clear)</option>`;
-    cachedUsers.forEach(u => {
-        const selected = (assignedTo === u.username) ? 'selected' : '';
-        userOptions += `<option value="${escapeHtml(u.username)}" ${selected}>${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`;
-    });
-
     if (!assignedTo) {
         container.innerHTML = `
             <button onclick="claimTicket(${ticket.id})" title="Take this ticket yourself" 
-                    class="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition active:scale-95">
+                    class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95 whitespace-nowrap">
                 <i class="fa-solid fa-hand text-[10px]"></i>
                 <span>Take Ticket</span>
             </button>
-            <div class="relative">
-                <select onchange="assignTicket(${ticket.id}, this.value)" title="Assign to technician" class="bg-slate-800 border border-slate-700/80 text-slate-300 text-xs rounded-xl px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
-                    <option value="">Assign to...</option>
-                    ${cachedUsers.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`).join('')}
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] hover:border-slate-600 transition whitespace-nowrap shadow-sm">
+                <i class="fa-solid fa-user text-[10px] text-slate-400"></i>
+                <span class="text-slate-400">Assignee:</span>
+                <select onchange="assignTicket(${ticket.id}, this.value)" title="Assign to technician" class="bg-transparent text-[11px] font-medium text-slate-300 focus:outline-none cursor-pointer">
+                    <option value="" class="bg-slate-800 text-slate-400">Unassigned</option>
+                    ${cachedUsers.map(u => `<option value="${escapeHtml(u.username)}" class="bg-slate-800 text-slate-200">${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`).join('')}
                 </select>
             </div>
         `;
     } else {
         const isAssignedToMe = assignedTo === currentUser;
         container.innerHTML = `
-            <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl ${isAssignedToMe ? 'bg-indigo-600/25 border-indigo-500/40 text-indigo-200' : 'bg-slate-800 border-slate-700/80 text-slate-300'} border text-xs font-semibold">
-                <i class="fa-solid fa-user-check text-[10px] text-indigo-400"></i>
-                <span>${isAssignedToMe ? 'Assigned: You' : escapeHtml(assignedTo)}</span>
-            </div>
-            <div class="relative">
-                <select onchange="assignTicket(${ticket.id}, this.value)" title="Reassign ticket" class="bg-slate-800 border border-slate-700/80 text-slate-400 hover:text-slate-200 text-xs rounded-xl px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
-                    ${userOptions}
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${isAssignedToMe ? 'bg-indigo-950/60 border-indigo-700/60 text-indigo-300' : 'bg-slate-800/90 border-slate-700/80 text-slate-200'} border text-[11px] font-medium hover:border-slate-600 transition whitespace-nowrap shadow-sm">
+                <i class="fa-solid ${isAssignedToMe ? 'fa-user-check text-indigo-400' : 'fa-user text-slate-400'} text-[10px]"></i>
+                <span class="text-slate-400">Assignee:</span>
+                <select onchange="assignTicket(${ticket.id}, this.value)" title="Reassign ticket" class="bg-transparent text-[11px] font-bold ${isAssignedToMe ? 'text-indigo-200' : 'text-slate-200'} focus:outline-none cursor-pointer">
+                    <option value="" class="bg-slate-800 text-slate-400">Unassigned (Clear)</option>
+                    ${cachedUsers.map(u => {
+                        const isSel = assignedTo === u.username ? 'selected' : '';
+                        return `<option value="${escapeHtml(u.username)}" ${isSel} class="bg-slate-800 text-slate-200">${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`;
+                    }).join('')}
                 </select>
             </div>
         `;
