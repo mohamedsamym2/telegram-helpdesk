@@ -292,8 +292,24 @@ async function loadTickets() {
     }
 }
 
+let cachedStats = null;
+
 function updateBadgeCounters(stats) {
+    if (stats) {
+        cachedStats = stats;
+    } else {
+        stats = cachedStats;
+    }
     if (!stats) return;
+
+    // Pick counts based on currentQueueFilter
+    let counts = stats.global || stats;
+    if (currentQueueFilter === 'me' && stats.mine) {
+        counts = stats.mine;
+    } else if (currentQueueFilter === 'unassigned' && stats.unassigned) {
+        counts = stats.unassigned;
+    }
+
     const elTotal = document.getElementById('count-total');
     const elOpen = document.getElementById('count-open');
     const elProg = document.getElementById('count-in_progress');
@@ -301,12 +317,18 @@ function updateBadgeCounters(stats) {
     const elMine = document.getElementById('count-assigned-me');
     const elUnassigned = document.getElementById('count-unassigned');
 
-    if (elTotal) elTotal.textContent = `(${stats.total ?? 0})`;
-    if (elOpen) elOpen.textContent = `(${stats.open ?? 0})`;
-    if (elProg) elProg.textContent = `(${stats.in_progress ?? 0})`;
-    if (elClosed) elClosed.textContent = `(${stats.closed ?? 0})`;
-    if (elMine) elMine.textContent = `(${stats.assigned_to_me ?? 0})`;
-    if (elUnassigned) elUnassigned.textContent = `(${stats.unassigned ?? 0})`;
+    if (elTotal) elTotal.textContent = `(${counts.all ?? counts.total ?? 0})`;
+    if (elOpen) elOpen.textContent = `(${counts.open ?? 0})`;
+    if (elProg) elProg.textContent = `(${counts.in_progress ?? 0})`;
+    if (elClosed) elClosed.textContent = `(${counts.closed ?? 0})`;
+
+    // Queue buttons show count matching the selected status filter:
+    const statusKey = currentFilter === 'all' ? 'all' : currentFilter;
+    const mineCount = stats.mine ? (stats.mine[statusKey] ?? stats.mine.all) : (stats.assigned_to_me ?? 0);
+    const unassignedCount = stats.unassigned ? (stats.unassigned[statusKey] ?? stats.unassigned.all) : (stats.unassigned ?? 0);
+
+    if (elMine) elMine.textContent = `(${mineCount})`;
+    if (elUnassigned) elUnassigned.textContent = `(${unassignedCount})`;
 }
 
 function setFilter(filter) {
@@ -588,11 +610,16 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
                     <i class="fa-solid fa-lock text-[10px]"></i>
                     <span>Resolved & Closed</span>
                 </div>
+                <button onclick="changeStatus('in_progress')" title="Reopen this ticket" 
+                        class="px-3 py-1.5 rounded-xl bg-amber-600/80 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95">
+                    <i class="fa-solid fa-rotate-left text-[10px]"></i>
+                    <span>Reopen</span>
+                </button>
             `;
             replyForm.classList.add('hidden');
             cannedBar.classList.add('hidden');
             replyLockedNotice.classList.remove('hidden');
-            if (prioSelect) prioSelect.disabled = true;
+            if (prioSelect) prioSelect.disabled = false;
         } else {
             if (prioSelect) prioSelect.disabled = false;
             let progressBtn = '';
@@ -668,24 +695,13 @@ function renderAssignmentControls(ticket) {
     const container = document.getElementById('assignment-container');
     if (!container) return;
 
-    const isLocked = ticket.status === 'resolved' || ticket.status === 'closed';
     const assignedTo = ticket.assigned_to;
 
-    let userOptions = `<option value="">-- Reassign --</option>`;
+    let userOptions = `<option value="">-- Assign/Reassign --</option><option value="">Unassigned (Clear)</option>`;
     cachedUsers.forEach(u => {
         const selected = (assignedTo === u.username) ? 'selected' : '';
         userOptions += `<option value="${escapeHtml(u.username)}" ${selected}>${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`;
     });
-
-    if (isLocked) {
-        container.innerHTML = `
-            <div class="px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700/80 text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <i class="fa-solid fa-user-check text-[10px] text-indigo-400"></i>
-                <span>${assignedTo ? escapeHtml(assignedTo) : 'Unassigned'}</span>
-            </div>
-        `;
-        return;
-    }
 
     if (!assignedTo) {
         container.innerHTML = `
@@ -697,7 +713,7 @@ function renderAssignmentControls(ticket) {
             <div class="relative">
                 <select onchange="assignTicket(${ticket.id}, this.value)" title="Assign to technician" class="bg-slate-800 border border-slate-700/80 text-slate-300 text-xs rounded-xl px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer">
                     <option value="">Assign to...</option>
-                    ${cachedUsers.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`).join('')}
+                    ${cachedUsers.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}${u.username === currentUser ? ' (You)' : ''}</option>`).join('')}
                 </select>
             </div>
         `;

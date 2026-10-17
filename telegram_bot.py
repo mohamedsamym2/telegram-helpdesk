@@ -288,13 +288,23 @@ class TelegramBot:
             extracted_phone = match.group(0).strip()
 
         # 4. Handle commands like /start in private chat
-        if text.startswith("/start") and not is_group:
+        bot_username = self.bot_info.get("username", "IT_Support3_bot")
+        text = text.replace(f"@{bot_username}", "").strip()
+
+        if text.strip() == "/start" and not is_group:
             welcome_text = (
                 f"Hello {html.escape(first_name)}! 👋 Welcome to IT Support.\n\n"
-                f"You can describe any technical issue here to open a ticket, or continue a conversation with our support team."
+                f"Please describe your technical issue here (you can also attach photos/screenshots), and an IT Support ticket will be opened for you immediately! 🎫"
             )
             await self.send_message(chat_id, welcome_text)
             return
+        elif text.startswith("/start "):
+            text = text[7:].strip()
+        elif text.startswith("/ticket "):
+            text = text[8:].strip()
+        elif text.strip() == "/ticket":
+            text = "Technical support request"
+
 
         # 5. Check active open ticket for this user
         # While the ticket is open/in_progress: append messages to the open ticket thread.

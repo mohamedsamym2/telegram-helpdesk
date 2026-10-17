@@ -367,10 +367,6 @@ def update_ticket_status(ticket_id: int, status: str) -> Optional[Dict[str, Any]
     if not curr:
         conn.close()
         return None
-        
-    if curr["status"] in ('resolved', 'closed') and status not in ('resolved', 'closed'):
-        conn.close()
-        raise ValueError("Closed tickets cannot be reopened. A new ticket must be created.")
 
     sla_breached = 0
     if status == 'closed' and curr["sla_deadline"]:
@@ -384,7 +380,7 @@ def update_ticket_status(ticket_id: int, status: str) -> Optional[Dict[str, Any]
 
     cursor.execute("""
         UPDATE tickets 
-        SET status = ?, updated_at = ?, closed_at = COALESCE(?, closed_at),
+        SET status = ?, updated_at = ?, closed_at = ?,
             sla_breached = CASE WHEN ? = 'closed' THEN ? ELSE sla_breached END
         WHERE id = ?
     """, (status, now, closed_at, status, sla_breached, ticket_id))
@@ -468,36 +464,71 @@ def get_ticket_details(ticket_id: int) -> Optional[Dict[str, Any]]:
     conn.close()
     return ticket
 
-def get_stats(agent_username: Optional[str] = None) -> Dict[str, int]:
+def get_stats(agent_username: Optional[str] = None) -> Dict[str, Any]:
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'open'")
-    open_count = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'in_progress'")
-    in_progress_count = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('resolved', 'closed')")
-    closed_count = cursor.fetchone()[0]
+
+    # 1. Global totals by status
     cursor.execute("SELECT COUNT(*) FROM tickets")
-    total_count = cursor.fetchone()[0]
-    
-    # Unassigned open/in_progress tickets
-    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress') AND (assigned_to IS NULL OR assigned_to = '')")
-    unassigned_count = cursor.fetchone()[0]
-    
-    # Assigned to current user
-    assigned_to_me = 0
+    total_all = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'open'")
+    open_all = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'in_progress'")
+    prog_all = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('resolved', 'closed')")
+    closed_all = cursor.fetchone()[0]
+
+    # 2. Unassigned totals by status
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE (assigned_to IS NULL OR assigned_to = '')")
+    unassigned_total = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'open' AND (assigned_to IS NULL OR assigned_to = '')")
+    unassigned_open = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'in_progress' AND (assigned_to IS NULL OR assigned_to = '')")
+    unassigned_prog = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('resolved', 'closed') AND (assigned_to IS NULL OR assigned_to = '')")
+    unassigned_closed = cursor.fetchone()[0]
+
+    # 3. Mine totals by status
+    mine_total = 0
+    mine_open = 0
+    mine_prog = 0
+    mine_closed = 0
     if agent_username:
-        cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress') AND assigned_to = ?", (agent_username,))
-        assigned_to_me = cursor.fetchone()[0]
-        
+        cursor.execute("SELECT COUNT(*) FROM tickets WHERE assigned_to = ?", (agent_username,))
+        mine_total = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'open' AND assigned_to = ?", (agent_username,))
+        mine_open = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'in_progress' AND assigned_to = ?", (agent_username,))
+        mine_prog = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('resolved', 'closed') AND assigned_to = ?", (agent_username,))
+        mine_closed = cursor.fetchone()[0]
+
     conn.close()
     return {
-        "open": open_count,
-        "in_progress": in_progress_count,
-        "closed": closed_count,
-        "total": total_count,
-        "unassigned": unassigned_count,
-        "assigned_to_me": assigned_to_me
+        "global": {
+            "all": total_all,
+            "open": open_all,
+            "in_progress": prog_all,
+            "closed": closed_all
+        },
+        "unassigned": {
+            "all": unassigned_total,
+            "open": unassigned_open,
+            "in_progress": unassigned_prog,
+            "closed": unassigned_closed
+        },
+        "mine": {
+            "all": mine_total,
+            "open": mine_open,
+            "in_progress": mine_prog,
+            "closed": mine_closed
+        },
+        "open": open_all,
+        "in_progress": prog_all,
+        "closed": closed_all,
+        "total": total_all,
+        "unassigned": unassigned_total,
+        "assigned_to_me": mine_total
     }
 
 def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
