@@ -119,6 +119,13 @@
                 <i class="fa-solid fa-gear"></i>
             </button>
 
+            <!-- Reports & Analytics Button -->
+            <button onclick="openReportsModal()" title="View SLA, Analytics & Export Reports" 
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 text-xs font-semibold transition shadow-sm">
+                <i class="fa-solid fa-chart-line text-indigo-400"></i>
+                <span>Reports</span>
+            </button>
+
             <!-- Users Management Button -->
             <button onclick="openUsersModal()" title="Manage Users & Team" 
                     class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold transition">
@@ -168,6 +175,19 @@
                     </button>
                     <button onclick="setFilter('closed')" id="filter-closed" class="filter-tab flex-1 py-1.5 rounded-lg text-center font-medium transition">
                         Closed <span id="count-closed" class="opacity-80 text-[10px] ml-1">(0)</span>
+                    </button>
+                </div>
+
+                <!-- Queue / Assignment Filter Pills -->
+                <div class="flex items-center justify-between gap-1 pt-0.5 text-[11px]">
+                    <button onclick="setQueueFilter('all')" id="queue-all" class="queue-tab active flex-1 py-1 rounded-lg text-center font-semibold transition">
+                        All Queues
+                    </button>
+                    <button onclick="setQueueFilter('me')" id="queue-me" class="queue-tab flex-1 py-1 rounded-lg text-center font-semibold transition text-slate-400 hover:text-slate-200">
+                        <i class="fa-solid fa-user-check text-[9px] mr-1 text-indigo-400"></i>Mine <span id="count-assigned-me" class="opacity-80 text-[10px]">(0)</span>
+                    </button>
+                    <button onclick="setQueueFilter('unassigned')" id="queue-unassigned" class="queue-tab flex-1 py-1 rounded-lg text-center font-semibold transition text-slate-400 hover:text-slate-200">
+                        <i class="fa-solid fa-hand text-[9px] mr-1 text-amber-400"></i>Unassigned <span id="count-unassigned" class="opacity-80 text-[10px]">(0)</span>
                     </button>
                 </div>
             </div>
@@ -231,16 +251,38 @@
                     </div>
 
                     <!-- Status Change & Actions -->
-                    <div class="flex items-center gap-2.5">
+                    <div class="flex items-center gap-2">
+                        <!-- Priority Selector -->
+                        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700/80 text-xs">
+                            <i class="fa-solid fa-flag text-[10px] text-slate-400"></i>
+                            <select id="ticket-priority-select" onchange="handlePriorityChange(this.value)" class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer text-slate-200">
+                                <option value="low" class="bg-slate-800 text-slate-300">Low (48h)</option>
+                                <option value="medium" class="bg-slate-800 text-sky-400" selected>Medium (24h)</option>
+                                <option value="high" class="bg-slate-800 text-amber-400">High (6h)</option>
+                                <option value="critical" class="bg-slate-800 text-rose-400">Critical (2h)</option>
+                            </select>
+                        </div>
+
+                        <!-- SLA Countdown Badge -->
+                        <div id="ticket-sla-badge" class="px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs font-mono flex items-center gap-1.5 text-slate-300">
+                            <i class="fa-solid fa-clock text-[10px] text-indigo-400"></i>
+                            <span id="ticket-sla-text">SLA: Calculating...</span>
+                        </div>
+
+                        <!-- Assignee Controls (Claim / Select Agent) -->
+                        <div id="assignment-container" class="flex items-center gap-1.5">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+
                         <!-- Manual Phone Edit Button -->
                         <button onclick="promptEditPhone()" title="Edit Phone Number" 
-                                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs flex items-center gap-1.5 transition">
-                            <i class="fa-solid fa-pen-to-square"></i>
-                            <span>Edit Phone</span>
+                                class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-phone text-[10px]"></i>
+                            <span>Phone</span>
                         </button>
 
                         <!-- Status Actions (Resolve & Close Button or Locked Pill) -->
-                        <div id="status-container" class="flex items-center gap-2">
+                        <div id="status-container" class="flex items-center gap-1.5">
                             <!-- Populated dynamically via JS -->
                         </div>
                     </div>
@@ -418,6 +460,137 @@
                     <button type="submit" id="save-account-btn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition">Update Password</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Analytics & Reports Modal -->
+    <div id="reports-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-850 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                        <i class="fa-solid fa-chart-pie text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-white">HelpDesk Analytics & Performance Reports</h3>
+                        <p class="text-xs text-slate-400">Track SLA compliance, resolution trends, and IT technician performance</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="exportReportsCSV()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition active:scale-95">
+                        <i class="fa-solid fa-file-excel"></i>
+                        <span>Export to Excel / CSV</span>
+                    </button>
+                    <button onclick="closeReportsModal()" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="p-4 bg-slate-900/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-slate-400 font-semibold mr-1">Preset:</span>
+                    <button onclick="setReportPreset('today')" id="preset-today" class="report-preset-btn px-2.5 py-1 rounded-lg text-slate-300 hover:bg-slate-800 border border-transparent font-medium transition">Today</button>
+                    <button onclick="setReportPreset('7days')" id="preset-7days" class="report-preset-btn px-2.5 py-1 rounded-lg text-slate-300 hover:bg-slate-800 border border-transparent font-medium transition">Last 7 Days</button>
+                    <button onclick="setReportPreset('this_month')" id="preset-this_month" class="report-preset-btn active px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-medium transition shadow-sm">This Month</button>
+                    <button onclick="setReportPreset('last_month')" id="preset-last_month" class="report-preset-btn px-2.5 py-1 rounded-lg text-slate-300 hover:bg-slate-800 border border-transparent font-medium transition">Last Month</button>
+                    <button onclick="setReportPreset('all')" id="preset-all" class="report-preset-btn px-2.5 py-1 rounded-lg text-slate-300 hover:bg-slate-800 border border-transparent font-medium transition">All Time</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400 font-semibold">Custom:</span>
+                    <input type="date" id="report-start-date" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none focus:border-indigo-500">
+                    <span class="text-slate-500">to</span>
+                    <input type="date" id="report-end-date" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none focus:border-indigo-500">
+                    <button onclick="applyCustomReportDate()" class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition active:scale-95">
+                        Apply
+                    </button>
+                </div>
+            </div>
+
+            <!-- Body / Content -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scroll">
+                <!-- KPI Summary Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 shadow-sm">
+                        <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Total Tickets</span>
+                        <div id="kpi-total-tickets" class="text-2xl font-bold text-white mt-1">0</div>
+                        <span class="text-[11px] text-slate-500">Opened in period</span>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 shadow-sm">
+                        <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Resolved & Closed</span>
+                        <div id="kpi-resolved-tickets" class="text-2xl font-bold text-emerald-400 mt-1">0</div>
+                        <span id="kpi-resolution-rate" class="text-[11px] text-emerald-500/90">0% resolution rate</span>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 shadow-sm">
+                        <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">SLA Compliance</span>
+                        <div id="kpi-sla-compliance" class="text-2xl font-bold text-indigo-400 mt-1">100%</div>
+                        <span id="kpi-sla-breaches" class="text-[11px] text-rose-400">0 Breached</span>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 shadow-sm">
+                        <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Avg Resolution Time</span>
+                        <div id="kpi-avg-resolution" class="text-2xl font-bold text-sky-400 mt-1">0m</div>
+                        <span id="kpi-first-response" class="text-[11px] text-slate-500">Avg first response: 0m</span>
+                    </div>
+                </div>
+
+                <!-- Team Performance Leaderboard -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl overflow-hidden shadow-sm">
+                    <div class="px-4 py-3 border-b border-slate-700/80 flex items-center justify-between">
+                        <h4 class="font-bold text-xs text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-trophy text-amber-400"></i>
+                            IT Team Performance & Tickets Solved
+                        </h4>
+                        <span class="text-[11px] text-slate-400">Tracked by assigned technician</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-800/90 text-slate-400 border-b border-slate-700/60">
+                                <tr>
+                                    <th class="py-2.5 px-4 font-semibold">IT Technician</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center">Handled</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center">Resolved</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center">Avg Resolution Time</th>
+                                    <th class="py-2.5 px-4 font-semibold text-center">SLA Met %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="team-performance-tbody" class="divide-y divide-slate-700/40 text-slate-200">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Ticket Breakdown Table -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl overflow-hidden shadow-sm">
+                    <div class="px-4 py-3 border-b border-slate-700/80 flex items-center justify-between">
+                        <h4 class="font-bold text-xs text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-indigo-400"></i>
+                            Period Tickets List
+                        </h4>
+                        <span id="report-ticket-count" class="text-[11px] text-slate-400">0 tickets</span>
+                    </div>
+                    <div class="overflow-x-auto max-h-60 custom-scroll">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-800/90 text-slate-400 border-b border-slate-700/60 sticky top-0">
+                                <tr>
+                                    <th class="py-2 px-3"># Ticket</th>
+                                    <th class="py-2 px-3">Requester</th>
+                                    <th class="py-2 px-3">Subject</th>
+                                    <th class="py-2 px-3 text-center">Priority</th>
+                                    <th class="py-2 px-3 text-center">Assigned</th>
+                                    <th class="py-2 px-3 text-center">Status</th>
+                                    <th class="py-2 px-3 text-center">SLA Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-tickets-tbody" class="divide-y divide-slate-700/40 text-slate-200 font-mono text-[11px]">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

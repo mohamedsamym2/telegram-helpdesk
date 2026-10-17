@@ -2,7 +2,7 @@
 ; Compiles standalone installer without requiring Python on target system
 
 #define MyAppName "IT Support Helpdesk"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "IT Department"
 #define MyAppURL "http://localhost:8080"
 #define MyAppExeName "ITSupportHelpdesk.exe"
@@ -19,7 +19,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer_output
-OutputBaseFilename=ITSupportHelpdesk_Setup_v1.0
+OutputBaseFilename=ITSupportHelpdesk_Setup_v2.0
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

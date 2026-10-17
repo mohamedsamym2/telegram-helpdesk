@@ -1,5 +1,7 @@
 import asyncio
 import os
+import csv
+import io
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
@@ -12,7 +14,8 @@ from database import (
     get_ticket_details, update_ticket_status, add_message,
     get_stats, update_ticket_phone, verify_user_credentials,
     update_user_password, get_all_users, create_user,
-    delete_user, create_session, verify_session, delete_session
+    delete_user, create_session, verify_session, delete_session,
+    assign_ticket, update_ticket_priority, get_analytics_report
 )
 from telegram_bot import TelegramBot
 
@@ -109,6 +112,12 @@ class StatusPayload(BaseModel):
 
 class UpdateUserPayload(BaseModel):
     phone_number: Optional[str] = None
+
+class AssignPayload(BaseModel):
+    assigned_to: Optional[str] = None
+
+class PriorityPayload(BaseModel):
+    priority: str
 
 # Routes
 @app.get("/")
@@ -210,16 +219,19 @@ async def remove_user(user_id: int, user: str = Depends(get_current_user)):
 
 # System & Settings Endpoints
 @app.get("/api/status")
-async def get_system_status():
+async def get_system_status(request: Request):
     token = bot.get_token()
     is_configured = bool(token)
     bot_info = bot.bot_info
-    stats = get_stats()
+    sess_token = request.cookies.get("session_token")
+    agent_user = verify_session(sess_token) if sess_token else None
+    stats = get_stats(agent_username=agent_user)
     return {
         "configured": is_configured,
         "bot_running": bot.is_running,
         "bot": bot_info,
-        "stats": stats
+        "stats": stats,
+        "current_user": agent_user
     }
 
 @app.post("/api/settings/token")
@@ -237,9 +249,10 @@ async def set_bot_token(payload: TokenPayload, user: str = Depends(get_current_u
 
 # Ticket Management Endpoints (Protected)
 @app.get("/api/tickets")
-async def list_tickets(status: Optional[str] = "all", user: str = Depends(get_current_user)):
-    tickets = get_all_tickets(status_filter=status)
-    return {"tickets": tickets}
+async def list_tickets(status: Optional[str] = "all", assigned: Optional[str] = None, user: str = Depends(get_current_user)):
+    tickets = get_all_tickets(status_filter=status, assigned_filter=assigned)
+    stats = get_stats(agent_username=user)
+    return {"tickets": tickets, "stats": stats}
 
 @app.get("/api/tickets/{ticket_id}")
 async def get_ticket(ticket_id: int, user: str = Depends(get_current_user)):
@@ -327,6 +340,91 @@ async def update_ticket_info(ticket_id: int, payload: UpdateUserPayload, user: s
         "phone_number": payload.phone_number
     })
     return {"ok": True}
+
+@app.post("/api/tickets/{ticket_id}/assign")
+async def assign_ticket_endpoint(ticket_id: int, payload: AssignPayload, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    updated = assign_ticket(ticket_id, payload.assigned_to)
+    stats = get_stats(agent_username=user)
+    
+    await manager.broadcast({
+        "type": "ticket_assigned",
+        "ticket_id": ticket_id,
+        "assigned_to": payload.assigned_to,
+        "ticket": updated,
+        "stats": stats
+    })
+    return {"ok": True, "ticket": updated}
+
+@app.post("/api/tickets/{ticket_id}/priority")
+async def change_ticket_priority(ticket_id: int, payload: PriorityPayload, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    updated = update_ticket_priority(ticket_id, payload.priority)
+    
+    await manager.broadcast({
+        "type": "priority_changed",
+        "ticket_id": ticket_id,
+        "priority": payload.priority,
+        "ticket": updated
+    })
+    return {"ok": True, "ticket": updated}
+
+# Analytics & Reports Endpoints
+@app.get("/api/reports")
+async def get_reports_endpoint(start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(get_current_user)):
+    report = get_analytics_report(start_date=start_date, end_date=end_date)
+    return {"ok": True, "report": report}
+
+@app.get("/api/reports/export")
+async def export_reports_csv(start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(get_current_user)):
+    report = get_analytics_report(start_date=start_date, end_date=end_date)
+    tickets = report.get("tickets", [])
+    
+    output = io.StringIO()
+    # Write UTF-8 BOM so Microsoft Excel renders Arabic and English perfectly
+    output.write('\ufeff')
+    writer = csv.writer(output)
+    
+    # Headers
+    writer.writerow([
+        "Ticket Number", "Created At", "Requester Name", "Username", "Phone",
+        "Source Chat", "Subject", "Status", "Priority", "Assigned Technician",
+        "First Response At", "Closed At", "SLA Deadline", "SLA Status"
+    ])
+    
+    for t in tickets:
+        sla_status = "Breached" if t.get("sla_breached") else "Met / On Track"
+        writer.writerow([
+            t.get("ticket_number", ""),
+            t.get("created_at", ""),
+            t.get("user_name", ""),
+            f"@{t['username']}" if t.get("username") else "",
+            t.get("phone_number", ""),
+            t.get("chat_title") or t.get("chat_type", ""),
+            t.get("subject", ""),
+            t.get("status", "").upper(),
+            t.get("priority", "medium").upper(),
+            t.get("assigned_to") or "Unassigned",
+            t.get("first_response_at", ""),
+            t.get("closed_at", ""),
+            t.get("sla_deadline", ""),
+            sla_status
+        ])
+        
+    csv_content = output.getvalue()
+    filename = f"IT_Helpdesk_Report_{start_date or 'all'}_to_{end_date or 'now'}.csv"
+    
+    return Response(
+        content=csv_content.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 # WebSocket for Real-time Updates
 @app.websocket("/ws")
