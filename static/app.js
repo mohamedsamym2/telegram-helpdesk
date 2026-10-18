@@ -250,7 +250,13 @@ function handleWsEvent(event) {
     } else if (event.type === 'ticket_updated') {
         loadTickets();
         if (currentTicketId === event.ticket_id && event.phone_number) {
-            document.getElementById('current-user-phone').textContent = event.phone_number;
+            const phoneEl = document.getElementById('current-user-phone');
+            const reqBtn = document.getElementById('btn-request-phone');
+            if (phoneEl) {
+                phoneEl.textContent = event.phone_number;
+                phoneEl.className = 'text-emerald-400 font-mono font-bold';
+            }
+            if (reqBtn) reqBtn.classList.add('hidden');
         }
     } else if (event.type === 'ticket_assigned') {
         loadTickets();
@@ -581,7 +587,25 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
             chatTypeEl.innerHTML = `<i class="fa-solid fa-lock text-[9px] mr-1"></i>Direct Chat`;
         }
         
-        document.getElementById('current-user-phone').textContent = ticket.phone_number || 'No phone recorded';
+        const phoneEl = document.getElementById('current-user-phone');
+        const reqBtn = document.getElementById('btn-request-phone');
+        if (phoneEl) {
+            if (ticket.phone_number) {
+                phoneEl.textContent = ticket.phone_number;
+                phoneEl.className = 'text-emerald-400 font-mono font-bold';
+                if (reqBtn) reqBtn.classList.add('hidden');
+            } else {
+                phoneEl.textContent = 'No phone recorded';
+                phoneEl.className = 'text-slate-400 italic font-sans';
+                if (reqBtn) reqBtn.classList.remove('hidden');
+            }
+        }
+
+        const userTgIdEl = document.getElementById('current-user-tgid');
+        if (userTgIdEl) {
+            userTgIdEl.textContent = ticket.telegram_user_id ? `ID: ${ticket.telegram_user_id}` : '';
+        }
+
         document.getElementById('current-user-username').textContent = ticket.username ? `@${ticket.username}` : '';
         document.getElementById('current-ticket-time').textContent = formatTimeAgo(ticket.created_at);
 
@@ -858,11 +882,50 @@ async function promptEditPhone() {
             body: JSON.stringify({ phone_number: newPhone.trim() })
         });
         if (res.ok) {
-            document.getElementById('current-user-phone').textContent = newPhone.trim() || 'No phone recorded';
+            const phoneEl = document.getElementById('current-user-phone');
+            const reqBtn = document.getElementById('btn-request-phone');
+            if (phoneEl) {
+                if (newPhone.trim()) {
+                    phoneEl.textContent = newPhone.trim();
+                    phoneEl.className = 'text-emerald-400 font-mono font-bold';
+                    if (reqBtn) reqBtn.classList.add('hidden');
+                } else {
+                    phoneEl.textContent = 'No phone recorded';
+                    phoneEl.className = 'text-slate-400 italic font-sans';
+                    if (reqBtn) reqBtn.classList.remove('hidden');
+                }
+            }
             loadTickets();
         }
     } catch (e) {
         alert('Failed to update phone number');
+    }
+}
+
+// Request Phone Number from Customer via Telegram
+async function requestUserPhone() {
+    if (!currentTicketId) return;
+    const reqBtn = document.getElementById('btn-request-phone');
+    if (reqBtn) {
+        reqBtn.disabled = true;
+        reqBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[8px]"></i><span>Sending...</span>';
+    }
+    try {
+        const res = await fetch(`/api/tickets/${currentTicketId}/request-phone`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            alert('Phone request message has been sent to the user on Telegram! 📱');
+        } else {
+            alert(data.detail || 'Failed to send phone request.');
+        }
+    } catch (e) {
+        console.error('Error requesting phone', e);
+        alert('Network error while requesting phone number.');
+    } finally {
+        if (reqBtn) {
+            reqBtn.disabled = false;
+            reqBtn.innerHTML = '<i class="fa-solid fa-paper-plane text-[8px]"></i><span>Request Phone</span>';
+        }
     }
 }
 

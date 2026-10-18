@@ -200,6 +200,16 @@ def init_db():
     )
     """)
     
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_profiles (
+        telegram_user_id INTEGER PRIMARY KEY,
+        user_name TEXT,
+        username TEXT,
+        phone_number TEXT,
+        updated_at TEXT
+    )
+    """)
+    
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_user_status ON tickets(telegram_user_id, status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_ticket_id ON messages(ticket_id)")
     # Ensure default telegram bot token if not set
@@ -258,6 +268,63 @@ def calculate_sla_deadline(created_at_str: str, priority: str = "medium") -> str
     deadline = dt + timedelta(hours=hours)
     return deadline.strftime("%Y-%m-%d %H:%M:%S")
 
+def save_user_profile(telegram_user_id: int, user_name: str = "", username: str = "", phone_number: str = ""):
+    if not telegram_user_id:
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
+    row = cursor.fetchone()
+    if row:
+        current_phone = row["phone_number"] or ""
+        phone = phone_number.strip() if phone_number else current_phone
+        name = user_name.strip() if user_name else (row["user_name"] or "")
+        uname = username.strip() if username else (row["username"] or "")
+        cursor.execute("""
+            UPDATE user_profiles 
+            SET user_name = ?, username = ?, phone_number = ?, updated_at = ?
+            WHERE telegram_user_id = ?
+        """, (name, uname, phone, now, telegram_user_id))
+    else:
+        cursor.execute("""
+            INSERT INTO user_profiles (telegram_user_id, user_name, username, phone_number, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (telegram_user_id, user_name, username, phone_number, now))
+    conn.commit()
+    conn.close()
+
+def get_user_profile(telegram_user_id: int) -> Optional[Dict[str, Any]]:
+    if not telegram_user_id:
+        return None
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_latest_phone_for_user(telegram_user_id: int) -> str:
+    if not telegram_user_id:
+        return ""
+    conn = get_db()
+    cursor = conn.cursor()
+    # Check user_profiles table first
+    cursor.execute("SELECT phone_number FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
+    row = cursor.fetchone()
+    if row and row["phone_number"]:
+        conn.close()
+        return row["phone_number"].strip()
+    # Check historical tickets
+    cursor.execute("""
+        SELECT phone_number FROM tickets 
+        WHERE telegram_user_id = ? AND phone_number IS NOT NULL AND phone_number != ''
+        ORDER BY id DESC LIMIT 1
+    """, (telegram_user_id,))
+    row_t = cursor.fetchone()
+    conn.close()
+    return row_t["phone_number"].strip() if row_t else ""
+
 def create_ticket(telegram_chat_id: int, telegram_user_id: int, user_name: str, 
                   username: str, phone_number: str = "", chat_type: str = "private", 
                   chat_title: str = "", subject: str = "", last_message_id: int = 0,
@@ -268,6 +335,13 @@ def create_ticket(telegram_chat_id: int, telegram_user_id: int, user_name: str,
         prio = "medium"
     sla_deadline = calculate_sla_deadline(now, prio)
     
+    # Auto-resolve phone number if not provided from past user profile
+    clean_phone = (phone_number or "").strip()
+    if not clean_phone and telegram_user_id:
+        clean_phone = get_latest_phone_for_user(telegram_user_id)
+    elif clean_phone and telegram_user_id:
+        save_user_profile(telegram_user_id, user_name, username, clean_phone)
+    
     conn = get_db()
     cursor = conn.cursor()
     
@@ -276,7 +350,7 @@ def create_ticket(telegram_chat_id: int, telegram_user_id: int, user_name: str,
                              phone_number, chat_type, chat_title, status, subject, 
                              last_message_id, priority, sla_deadline, sla_breached, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, ?, ?)
-    """, (telegram_chat_id, telegram_user_id, user_name, username, phone_number, chat_type, 
+    """, (telegram_chat_id, telegram_user_id, user_name, username, clean_phone, chat_type, 
           chat_title, subject, last_message_id, prio, sla_deadline, now, now))
     
     ticket_id = cursor.lastrowid
@@ -298,12 +372,17 @@ def update_ticket_last_message_id(ticket_id: int, message_id: int):
     conn.close()
 
 def update_ticket_phone(ticket_id: int, phone_number: str):
+    clean_phone = (phone_number or "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("UPDATE tickets SET phone_number = ?, updated_at = ? WHERE id = ?", (phone_number, now, ticket_id))
+    cursor.execute("UPDATE tickets SET phone_number = ?, updated_at = ? WHERE id = ?", (clean_phone, now, ticket_id))
+    cursor.execute("SELECT telegram_user_id, user_name, username FROM tickets WHERE id = ?", (ticket_id,))
+    t_row = cursor.fetchone()
     conn.commit()
     conn.close()
+    if t_row and t_row["telegram_user_id"] and clean_phone:
+        save_user_profile(t_row["telegram_user_id"], t_row["user_name"] or "", t_row["username"] or "", clean_phone)
 
 def assign_ticket(ticket_id: int, assigned_to: Optional[str]) -> Optional[Dict[str, Any]]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

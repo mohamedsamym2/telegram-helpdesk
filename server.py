@@ -383,6 +383,15 @@ async def update_ticket_info(ticket_id: int, payload: UpdateUserPayload, user: s
     })
     return {"ok": True}
 
+@app.post("/api/tickets/{ticket_id}/request-phone")
+async def request_ticket_phone(ticket_id: int, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    res = await bot.request_user_phone(ticket)
+    return {"ok": True, "delivered": res.get("ok", False)}
+
 @app.post("/api/tickets/{ticket_id}/assign")
 async def assign_ticket_endpoint(ticket_id: int, payload: AssignPayload, user: str = Depends(get_current_user)):
     ticket = get_ticket_details(ticket_id)

@@ -239,6 +239,8 @@
                                 <div class="flex items-center gap-2.5 text-[11px] text-slate-400 mt-0.5">
                                     <span id="current-user-username" class="text-slate-400 font-mono">@username</span>
                                     <span class="text-slate-600">•</span>
+                                    <span id="current-user-tgid" class="text-slate-500 font-mono text-[10px]">ID: 123456789</span>
+                                    <span class="text-slate-600">•</span>
                                     <span id="current-ticket-time" class="text-slate-400">10m ago</span>
                                 </div>
                             </div>
@@ -283,6 +285,10 @@
                                 <span id="current-user-phone">No phone recorded</span>
                                 <button onclick="promptEditPhone()" title="Edit Phone Number" class="ml-1 text-slate-400 hover:text-slate-200 transition">
                                     <i class="fa-solid fa-pen text-[9px]"></i>
+                                </button>
+                                <button id="btn-request-phone" onclick="requestUserPhone()" title="Request phone number from user on Telegram" class="ml-1 px-2 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-500/40 text-[10px] font-sans flex items-center gap-1 transition shadow-sm active:scale-95">
+                                    <i class="fa-solid fa-paper-plane text-[8px]"></i>
+                                    <span>Request Phone</span>
                                 </button>
                             </div>
                         </div>

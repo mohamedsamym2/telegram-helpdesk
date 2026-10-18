@@ -8,7 +8,8 @@ from typing import Optional, Callable, Dict, Any
 from database import (
     get_setting, set_setting, get_active_ticket_for_user,
     create_ticket, update_ticket_phone, add_message, update_ticket_status,
-    get_ticket_details, update_ticket_last_message_id
+    get_ticket_details, update_ticket_last_message_id,
+    save_user_profile, get_user_profile, get_latest_phone_for_user
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -22,8 +23,40 @@ else:
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Regex to detect phone numbers in message text
-PHONE_REGEX = re.compile(r'(?:\+?20|0020)?0?1[0125]\d{8}\b|\b(?:\+?\d{1,4}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b')
+# Eastern Arabic numerals to standard ASCII translation
+ARABIC_TO_ENGLISH_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+def extract_phone_number(raw_text: str) -> Optional[str]:
+    """
+    Detects and normalizes phone numbers (Egyptian mobile numbers and international numbers),
+    supporting both ASCII and Eastern Arabic numerals.
+    """
+    if not raw_text:
+        return None
+    # 1. Normalize Eastern Arabic digits
+    norm = raw_text.translate(ARABIC_TO_ENGLISH_DIGITS)
+    
+    # 2. Egyptian mobile pattern (010, 011, 012, 015 + 8 digits)
+    eg_pattern = re.compile(r'(?:(?:\+|00)?20\s*|0)?(1[0125][\s\-\.]*(?:\d[\s\-\.]*){8})\b')
+    m = eg_pattern.search(norm)
+    if m:
+        digits = re.sub(r'\D', '', m.group(0))
+        if digits.startswith('20') and len(digits) >= 12:
+            digits = '0' + digits[2:]
+        elif not digits.startswith('0') and len(digits) == 10:
+            digits = '0' + digits
+        if len(digits) == 11 and digits.startswith(('010', '011', '012', '015')):
+            return digits
+
+    # 3. General international phone pattern (e.g. +966..., +1..., etc.)
+    intl_pattern = re.compile(r'(\+?\d{1,4}[\s\-\.]?\(?\d{2,4}\)?[\s\-\.]?\d{3,4}[\s\-\.]?\d{3,4})')
+    m_intl = intl_pattern.search(norm)
+    if m_intl:
+        cleaned = re.sub(r'[\s\-\(\)\.]', '', m_intl.group(1))
+        if len(cleaned) >= 9:
+            return cleaned
+
+    return None
 
 class TelegramBot:
     def __init__(self, broadcast_callback: Optional[Callable[[Dict[str, Any]], Any]] = None):
@@ -211,6 +244,39 @@ class TelegramBot:
             
         return {"ok": delivered, "delivered": delivered}
 
+    async def request_user_phone(self, ticket: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sends an interactive prompt with Share Contact button to the user on Telegram.
+        """
+        user_id = ticket["telegram_user_id"]
+        ticket_num = ticket["ticket_number"]
+        first_name = (ticket.get("user_name") or "User").split()[0]
+        
+        reply_keyboard = {
+            "keyboard": [
+                [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": True
+        }
+        
+        prompt_text = (
+            f"📞 <b>مرحباً {html.escape(first_name)}!</b>\n\n"
+            f"فريق الدعم الفني IT Support بحاجة إلى رقم هاتفك للتواصل معك بخصوص التذكرة <b>#{ticket_num}</b>.\n\n"
+            f"👇 يرجى الضغط على الزر بالأسفل لمشاركة رقم هاتفك بنقرة واحدة، أو كتابة الرقم هنا في رسالة:"
+        )
+        delivered = await self.send_message(user_id, prompt_text, reply_markup=reply_keyboard)
+        if not delivered and ticket.get("chat_type") in ("group", "supergroup"):
+            bot_username = self.bot_info.get("username", "IT_Support3_bot")
+            user_mention = f"@{ticket['username']}" if ticket.get("username") else html.escape(ticket.get("user_name", "User"))
+            group_msg = (
+                f"📞 {user_mention}، فريق الدعم الفني بانتظار رقم هاتفك لمتابعة التذكرة <b>#{ticket_num}</b>.\n"
+                f"👉 يرجى فتح المحادثة الخاصة لمشاركة رقم هاتفك: https://t.me/{bot_username}"
+            )
+            await self.send_message(ticket["telegram_chat_id"], group_msg)
+            
+        return {"ok": delivered, "delivered": delivered}
+
     async def _handle_update(self, update: Dict[str, Any]):
         msg = update.get("message") or update.get("edited_message")
         if not msg:
@@ -242,7 +308,14 @@ class TelegramBot:
         # 1. Handle Contact Sharing (Private chats)
         if contact:
             phone_number = contact.get("phone_number", "")
+            if phone_number.startswith("+"):
+                phone_number = phone_number[1:]
+            if phone_number.startswith("20") and len(phone_number) == 12:
+                phone_number = "0" + phone_number[2:]
+                
             active_ticket = get_active_ticket_for_user(user_id)
+            save_user_profile(user_id, full_name, username, phone_number)
+            
             if active_ticket:
                 update_ticket_phone(active_ticket["id"], phone_number)
                 update_ticket_last_message_id(active_ticket["id"], msg_id)
@@ -255,7 +328,7 @@ class TelegramBot:
                 )
                 await self.send_message(
                     chat_id,
-                    f"✅ <b>Thank you {html.escape(first_name)}!</b>\nYour phone number <code>{phone_number}</code> has been saved to ticket <b>{active_ticket['ticket_number']}</b>.",
+                    f"✅ <b>شكراً لك {html.escape(first_name)}!</b>\nتم حفظ رقم هاتفك <code>{phone_number}</code> بنجاح في التذكرة <b>#{active_ticket['ticket_number']}</b>.",
                     reply_markup={"remove_keyboard": True},
                     reply_to_message_id=msg_id
                 )
@@ -265,6 +338,13 @@ class TelegramBot:
                         "ticket_id": active_ticket["id"],
                         "phone_number": phone_number
                     })
+            else:
+                await self.send_message(
+                    chat_id,
+                    f"✅ <b>أهلاً بك {html.escape(first_name)}!</b>\nتم تسجيل رقم هاتفك <code>{phone_number}</code> بنجاح. يمكنك الآن كتابة مشكلتك في أي وقت وسيتم فتح تذكرة دعم فني لك فوراً! 🎫",
+                    reply_markup={"remove_keyboard": True},
+                    reply_to_message_id=msg_id
+                )
             return
 
         # 2. Extract media if any
@@ -281,22 +361,59 @@ class TelegramBot:
         if not text and not media_url:
             return
 
-        # 3. Detect phone number automatically if user wrote it in the text
-        extracted_phone = ""
-        match = PHONE_REGEX.search(text)
-        if match:
-            extracted_phone = match.group(0).strip()
+        # 3. Detect phone number automatically if user wrote it in the text (Arabic or English digits)
+        extracted_phone = extract_phone_number(text)
+        if extracted_phone:
+            save_user_profile(user_id, full_name, username, extracted_phone)
 
         # 4. Handle commands like /start in private chat
         bot_username = self.bot_info.get("username", "IT_Support3_bot")
         text = text.replace(f"@{bot_username}", "").strip()
 
         if text.strip() == "/start" and not is_group:
-            welcome_text = (
-                f"Hello {html.escape(first_name)}! 👋 Welcome to IT Support.\n\n"
-                f"Please describe your technical issue here (you can also attach photos/screenshots), and an IT Support ticket will be opened for you immediately! 🎫"
-            )
-            await self.send_message(chat_id, welcome_text)
+            reply_keyboard = {
+                "keyboard": [
+                    [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
+                ],
+                "resize_keyboard": True,
+                "one_time_keyboard": True
+            }
+            active_ticket = get_active_ticket_for_user(user_id)
+            if active_ticket:
+                p_num = active_ticket.get("phone_number")
+                if p_num:
+                    welcome_text = (
+                        f"أهلاً بك مجدداً {html.escape(first_name)}! 👋\n\n"
+                        f"لديك تذكرة مفتوحة حالياً برقم <b>#{active_ticket['ticket_number']}</b>.\n"
+                        f"📱 رقم هاتفك المسجل: <code>{p_num}</code>\n\n"
+                        f"فريق الدعم الفني يعمل على طلبك، وسيقوم بالرد عليك هنا قريباً."
+                    )
+                    await self.send_message(chat_id, welcome_text, reply_markup={"remove_keyboard": True})
+                else:
+                    welcome_text = (
+                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
+                        f"لديك تذكرة مفتوحة حالياً برقم <b>#{active_ticket['ticket_number']}</b>.\n\n"
+                        f"📲 <b>يرجى تزويدنا برقم هاتفك للتواصل وحل المشكلة سريعاً:</b>\n"
+                        f"👇 اضغط على الزر بالأسفل لمشاركة رقم هاتفك، أو اكتبه هنا في رسالة."
+                    )
+                    await self.send_message(chat_id, welcome_text, reply_markup=reply_keyboard)
+            else:
+                user_prof = get_user_profile(user_id)
+                saved_phone = user_prof.get("phone_number") if user_prof else ""
+                if saved_phone:
+                    welcome_text = (
+                        f"أهلاً بك {html.escape(first_name)}! 👋 مرحباً بك في الدعم الفني IT Support.\n\n"
+                        f"📱 رقم هاتفك المسجل: <code>{saved_phone}</code>\n\n"
+                        f"يرجى كتابة تفاصيل مشكلتك هنا (أو إرسال صور توضيحية) وسيتم فتح تذكرة دعم فني لك فوراً! 🎫"
+                    )
+                    await self.send_message(chat_id, welcome_text, reply_markup={"remove_keyboard": True})
+                else:
+                    welcome_text = (
+                        f"أهلاً بك {html.escape(first_name)}! 👋 مرحباً بك في الدعم الفني IT Support.\n\n"
+                        f"يرجى كتابة تفاصيل مشكلتك هنا في أي وقت وسيتم فتح تذكرة لك فوراً! 🎫\n\n"
+                        f"📲 يمكنك أيضاً مشاركة رقم هاتفك بالضغط على الزر بالأسفل لحفظه لدينا للتواصل:"
+                    )
+                    await self.send_message(chat_id, welcome_text, reply_markup=reply_keyboard)
             return
         elif text.startswith("/start "):
             text = text[7:].strip()
@@ -304,7 +421,6 @@ class TelegramBot:
             text = text[8:].strip()
         elif text.strip() == "/ticket":
             text = "Technical support request"
-
 
         # 5. Check active open ticket for this user
         # While the ticket is open/in_progress: append messages to the open ticket thread.
@@ -314,8 +430,21 @@ class TelegramBot:
         if active_ticket:
             # Update last message ID
             update_ticket_last_message_id(active_ticket["id"], msg_id)
-            if extracted_phone and not active_ticket.get("phone_number"):
-                update_ticket_phone(active_ticket["id"], extracted_phone)
+            
+            # If a phone number was detected in this message
+            phone_acknowledged = False
+            if extracted_phone:
+                prev_phone = active_ticket.get("phone_number")
+                if not prev_phone or prev_phone != extracted_phone:
+                    update_ticket_phone(active_ticket["id"], extracted_phone)
+                    active_ticket["phone_number"] = extracted_phone
+                    phone_acknowledged = True
+                    if self.broadcast:
+                        await self.broadcast({
+                            "type": "ticket_updated",
+                            "ticket_id": active_ticket["id"],
+                            "phone_number": extracted_phone
+                        })
 
             # Append message to existing open ticket
             msg_record = add_message(
@@ -329,8 +458,12 @@ class TelegramBot:
             )
             
             # Send acknowledgement
-            ack_text = f"📥 Your message has been added to ticket <b>{active_ticket['ticket_number']}</b>."
-            await self.send_message(chat_id, ack_text, reply_to_message_id=msg_id)
+            if phone_acknowledged and len(text.strip()) <= 25:
+                ack_text = f"✅ تم حفظ رقم هاتفك <code>{extracted_phone}</code> في التذكرة <b>#{active_ticket['ticket_number']}</b> بنجاح!"
+                await self.send_message(chat_id, ack_text, reply_markup={"remove_keyboard": True}, reply_to_message_id=msg_id)
+            else:
+                ack_text = f"📥 تم استلام رسالتك وإضافتها إلى التذكرة <b>#{active_ticket['ticket_number']}</b>."
+                await self.send_message(chat_id, ack_text, reply_to_message_id=msg_id)
             
             if self.broadcast:
                 await self.broadcast({
@@ -366,18 +499,19 @@ class TelegramBot:
             
             bot_username = self.bot_info.get("username", "IT_Support3_bot")
             user_mention = f"@{username}" if username else html.escape(first_name)
+            phone_saved = new_ticket.get("phone_number")
 
             if is_group:
                 # Group reply: Acknowledge ticket and prompt user to start bot in private
-                phone_note = f"\n📱 <i>Phone detected: {extracted_phone}</i>" if extracted_phone else ""
+                phone_note = f"\n📱 <i>رقم الهاتف: {phone_saved}</i>" if phone_saved else "\n📲 <i>يرجى إرسال رقم هاتفك للتواصل ومتابعة المشكلة.</i>"
                 confirm_msg = (
-                    f"🎫 <b>Ticket #{new_ticket['ticket_number']} Created</b> for {user_mention}!\n"
-                    f"Our IT Support team has logged your issue and will reply to you <b>directly in private chat</b>.{phone_note}\n\n"
-                    f"👇 <i>Please make sure to start the bot in private to receive our response:</i>"
+                    f"🎫 <b>تم فتح تذكرة جديدة #{new_ticket['ticket_number']}</b> لـ {user_mention}!\n"
+                    f"فريق الدعم الفني سيتواصل معك عبر المحادثة الخاصة.{phone_note}\n\n"
+                    f"👇 <i>يرجى فتح المحادثة الخاصة مع البوت لتسجيل رقم هاتفك واستلام الرد:</i>"
                 )
                 inline_markup = {
                     "inline_keyboard": [
-                        [{"text": "💬 Open Private Chat with Support", "url": f"https://t.me/{bot_username}"}]
+                        [{"text": "💬 فتح المحادثة الخاصة مع البوت ومشاركة الرقم", "url": f"https://t.me/{bot_username}"}]
                     ]
                 }
                 await self.send_message(chat_id, confirm_msg, reply_markup=inline_markup, reply_to_message_id=msg_id)
@@ -385,18 +519,27 @@ class TelegramBot:
                 # Private chat reply
                 reply_keyboard = {
                     "keyboard": [
-                        [{"text": "📱 Share Phone Number", "request_contact": True}]
+                        [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
                     ],
                     "resize_keyboard": True,
                     "one_time_keyboard": True
                 }
-                phone_extra = f"\n📱 Phone saved: {extracted_phone}" if extracted_phone else "\n\n👇 <i>Tap below to share your phone number:</i>"
-                confirm_msg = (
-                    f"Hello {html.escape(first_name)}! 👋\n\n"
-                    f"Ticket <b>#{new_ticket['ticket_number']}</b> has been created for your issue. 🎫\n"
-                    f"Our IT Support team will reply to you here shortly.{phone_extra}"
-                )
-                markup = None if extracted_phone else reply_keyboard
+                if phone_saved:
+                    confirm_msg = (
+                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
+                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n"
+                        f"📱 رقم الهاتف المسجل: <code>{phone_saved}</code>\n\n"
+                        f"فريق الدعم الفني يعمل على طلبك وسيقوم بالرد عليك هنا قريباً."
+                    )
+                    markup = {"remove_keyboard": True}
+                else:
+                    confirm_msg = (
+                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
+                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n\n"
+                        f"📲 <b>يرجى تزويدنا برقم هاتفك للتواصل وحل المشكلة سريعاً:</b>\n"
+                        f"👇 اضغط على الزر بالأسفل لمشاركة رقم هاتفك، أو اكتبه هنا في رسالة:"
+                    )
+                    markup = reply_keyboard
                 await self.send_message(chat_id, confirm_msg, reply_markup=markup, reply_to_message_id=msg_id)
             
             if self.broadcast:
