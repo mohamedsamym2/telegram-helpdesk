@@ -112,37 +112,37 @@ class TelegramBot:
             
         ticket_num = ticket.get("ticket_number", f"TK-{ticket['id']}")
         user_name = ticket.get("user_name", "User")
-        username_str = f"@{ticket['username']}" if ticket.get("username") else "بدون يوزرنيم"
-        phone = ticket.get("phone_number") or "غير مسجل"
+        username_str = f"@{ticket['username']}" if ticket.get("username") else "No username"
+        phone = ticket.get("phone_number") or "Not registered"
         category = ticket.get("category", "General")
         priority = (ticket.get("priority") or "medium").upper()
-        subject = ticket.get("subject", "لا يوجد وصف")
-        sla_deadline = ticket.get("sla_deadline", "غير محدد")
+        subject = ticket.get("subject", "No description")
+        sla_deadline = ticket.get("sla_deadline", "Not specified")
         
         priority_emojis = {
-            "CRITICAL": "🔴 حرج (2h)",
-            "HIGH": "🟠 عالي (6h)",
-            "MEDIUM": "🟡 متوسط (24h)",
-            "LOW": "🟢 منخفض (48h)"
+            "CRITICAL": "🔴 Critical (2h)",
+            "HIGH": "🟠 High (6h)",
+            "MEDIUM": "🟡 Medium (24h)",
+            "LOW": "🟢 Low (48h)"
         }
         prio_display = priority_emojis.get(priority, f"🟡 {priority}")
 
         alert_text = (
-            f"🚨 <b>تذكرة دعم فني جديدة #{ticket_num}</b>\n"
+            f"🚨 <b>New IT Support Ticket #{ticket_num}</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>المرسل:</b> {html.escape(user_name)} ({username_str})\n"
-            f"📱 <b>الهاتف:</b> <code>{phone}</code>\n"
-            f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
-            f"⚡ <b>الأولوية:</b> {prio_display}\n"
-            f"📝 <b>المشكلة:</b> {html.escape(subject)}\n"
-            f"⏱️ <b>موعد الحل الأقصى (SLA):</b> <code>{sla_deadline}</code>\n"
+            f"👤 <b>Requester:</b> {html.escape(user_name)} ({username_str})\n"
+            f"📱 <b>Phone:</b> <code>{phone}</code>\n"
+            f"🏷️ <b>Category:</b> {html.escape(category)}\n"
+            f"⚡ <b>Priority:</b> {prio_display}\n"
+            f"📝 <b>Issue:</b> {html.escape(subject)}\n"
+            f"⏱️ <b>SLA Resolution Target:</b> <code>{sla_deadline}</code>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👇 <i>اضغط على الزر بالأسفل لاستلام التذكرة وبدء العمل:</i>"
+            f"👇 <i>Click the button below to claim this ticket:</i>"
         )
         
         claim_keyboard = {
             "inline_keyboard": [
-                [{"text": "🙋‍♂️ استلام التذكرة (Claim Ticket)", "callback_data": f"claim:{ticket['id']}"}]
+                [{"text": "🙋‍♂️ Claim Ticket", "callback_data": f"claim:{ticket['id']}"}]
             ]
         }
         try:
@@ -160,35 +160,35 @@ class TelegramBot:
         user_name = ticket.get("user_name", "User")
         priority = (ticket.get("priority") or "medium").upper()
         category = ticket.get("category", "General")
-        assigned = ticket.get("assigned_to") or "غير مسند (Unassigned)"
+        assigned = ticket.get("assigned_to") or "Unassigned"
         
         if alert_type == "warning":
             mins_val = int(remaining_mins or 0)
             text = (
-                f"⚠️ <b>تحذير اقتراب كسر مهلة الـ SLA!</b>\n"
+                f"⚠️ <b>SLA Warning: Ticket Near Breach!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"🎫 <b>التذكرة:</b> #{ticket_num}\n"
-                f"👤 <b>المرسل:</b> {html.escape(user_name)}\n"
-                f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
-                f"⚡ <b>الأولوية:</b> {priority}\n"
-                f"⏳ <b>الوقت المتبقي:</b> <b>{mins_val} دقيقة فقط!</b>\n"
-                f"👨‍💻 <b>المسند إليه:</b> {html.escape(assigned)}\n"
+                f"🎫 <b>Ticket:</b> #{ticket_num}\n"
+                f"👤 <b>Requester:</b> {html.escape(user_name)}\n"
+                f"🏷️ <b>Category:</b> {html.escape(category)}\n"
+                f"⚡ <b>Priority:</b> {priority}\n"
+                f"⏳ <b>Time Remaining:</b> <b>{mins_val} minutes left!</b>\n"
+                f"👨‍💻 <b>Assigned To:</b> {html.escape(assigned)}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"يرجى سرعة متابعة التذكرة قبل كسر وقت الاستجابة المحدد."
+                f"Please expedite resolution before the SLA response time is breached."
             )
         else: # breached
-            deadline = ticket.get("sla_deadline", "غير محدد")
+            deadline = ticket.get("sla_deadline", "Not specified")
             text = (
-                f"🚨 <b>تنبيه عاجل: تم كسر مهلة الـ SLA!</b>\n"
+                f"🚨 <b>URGENT: SLA Deadline Breached!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"🎫 <b>التذكرة:</b> #{ticket_num}\n"
-                f"👤 <b>المرسل:</b> {html.escape(user_name)}\n"
-                f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
-                f"⚡ <b>الأولوية:</b> {priority}\n"
-                f"⏰ <b>الموعد المحدد كان:</b> <code>{deadline}</code>\n"
-                f"👨‍💻 <b>المسند إليه:</b> {html.escape(assigned)}\n"
+                f"🎫 <b>Ticket:</b> #{ticket_num}\n"
+                f"👤 <b>Requester:</b> {html.escape(user_name)}\n"
+                f"🏷️ <b>Category:</b> {html.escape(category)}\n"
+                f"⚡ <b>Priority:</b> {priority}\n"
+                f"⏰ <b>Target Deadline:</b> <code>{deadline}</code>\n"
+                f"👨‍💻 <b>Assigned To:</b> {html.escape(assigned)}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ تجاوزت هذه التذكرة الحد الزمني الأقصى! يرجى التدخل الفوري."
+                f"⚠️ This ticket has exceeded its resolution SLA window! Immediate action required."
             )
         try:
             chat_id_int = int(group_id)
@@ -317,17 +317,17 @@ class TelegramBot:
                 ]
             }
             text = (
-                f"✅ <b>تم حل التذكرة {ticket_num} بنجاح!</b>\n\n"
-                f"شكراً لتواصلك مع فريق الدعم الفني IT Support. 🙏\n\n"
-                f"🌟 <b>رأيك يهمنا لتطوير مستوى الخدمة:</b>\n"
-                f"كيف تقيّم تجربتك مع الدعم الفني لحل هذه المشكلة؟\n"
-                f"<i>(اضغط على عدد النجوم من 1 إلى 5 لتقييم الدعم)</i>"
+                f"✅ <b>Ticket {ticket_num} has been resolved!</b>\n\n"
+                f"Thank you for contacting IT Support. 🙏\n\n"
+                f"🌟 <b>Your feedback helps us improve:</b>\n"
+                f"How would you rate your IT support experience?\n"
+                f"<i>(Tap the stars from 1 to 5 to submit your rating)</i>"
             )
             await self.send_message(user_id, text, reply_markup=survey_keyboard)
         elif new_status == "in_progress":
             text = (
-                f"⚙️ <b>تحديث التذكرة {ticket_num}:</b>\n\n"
-                f"فريق الدعم الفني بدأ العمل على طلبك لحل المشكلة."
+                f"⚙️ <b>Ticket Update {ticket_num}:</b>\n\n"
+                f"The IT Support team has started working on your request."
             )
             await self.send_message(user_id, text)
 
@@ -387,24 +387,24 @@ class TelegramBot:
         
         reply_keyboard = {
             "keyboard": [
-                [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
+                [{"text": "📱 Share Phone Number", "request_contact": True}]
             ],
             "resize_keyboard": True,
             "one_time_keyboard": True
         }
         
         prompt_text = (
-            f"📞 <b>مرحباً {html.escape(first_name)}!</b>\n\n"
-            f"فريق الدعم الفني IT Support بحاجة إلى رقم هاتفك للتواصل معك بخصوص التذكرة <b>#{ticket_num}</b>.\n\n"
-            f"👇 يرجى الضغط على الزر بالأسفل لمشاركة رقم هاتفك بنقرة واحدة، أو كتابة الرقم هنا في رسالة:"
+            f"📞 <b>Hello {html.escape(first_name)}!</b>\n\n"
+            f"The IT Support team needs your phone number to contact you regarding ticket <b>#{ticket_num}</b>.\n\n"
+            f"👇 Please tap the button below to share your contact number with one click, or type it here in a reply:"
         )
         delivered = await self.send_message(user_id, prompt_text, reply_markup=reply_keyboard)
         if not delivered and ticket.get("chat_type") in ("group", "supergroup"):
             bot_username = self.bot_info.get("username", "IT_Support3_bot")
             user_mention = f"@{ticket['username']}" if ticket.get("username") else html.escape(ticket.get("user_name", "User"))
             group_msg = (
-                f"📞 {user_mention}، فريق الدعم الفني بانتظار رقم هاتفك لمتابعة التذكرة <b>#{ticket_num}</b>.\n"
-                f"👉 يرجى فتح المحادثة الخاصة لمشاركة رقم هاتفك: https://t.me/{bot_username}"
+                f"📞 {user_mention}, the IT Support team is waiting for your phone number to proceed with ticket <b>#{ticket_num}</b>.\n"
+                f"👉 Please open private chat to share your phone number: https://t.me/{bot_username}"
             )
             await self.send_message(ticket["telegram_chat_id"], group_msg)
             
@@ -461,7 +461,7 @@ class TelegramBot:
                 )
                 await self.send_message(
                     chat_id,
-                    f"✅ <b>شكراً لك {html.escape(first_name)}!</b>\nتم حفظ رقم هاتفك <code>{phone_number}</code> بنجاح في التذكرة <b>#{active_ticket['ticket_number']}</b>.",
+                    f"✅ <b>Thank you {html.escape(first_name)}!</b>\nYour phone number <code>{phone_number}</code> has been saved to ticket <b>#{active_ticket['ticket_number']}</b>.",
                     reply_markup={"remove_keyboard": True},
                     reply_to_message_id=msg_id
                 )
@@ -474,7 +474,7 @@ class TelegramBot:
             else:
                 await self.send_message(
                     chat_id,
-                    f"✅ <b>أهلاً بك {html.escape(first_name)}!</b>\nتم تسجيل رقم هاتفك <code>{phone_number}</code> بنجاح. يمكنك الآن كتابة مشكلتك في أي وقت وسيتم فتح تذكرة دعم فني لك فوراً! 🎫",
+                    f"✅ <b>Welcome {html.escape(first_name)}!</b>\nYour phone number <code>{phone_number}</code> has been saved. You can describe your issue anytime to open a support ticket! 🎫",
                     reply_markup={"remove_keyboard": True},
                     reply_to_message_id=msg_id
                 )
@@ -506,7 +506,7 @@ class TelegramBot:
         if text.strip() == "/start" and not is_group:
             reply_keyboard = {
                 "keyboard": [
-                    [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
+                    [{"text": "📱 Share Phone Number", "request_contact": True}]
                 ],
                 "resize_keyboard": True,
                 "one_time_keyboard": True
@@ -516,18 +516,18 @@ class TelegramBot:
                 p_num = active_ticket.get("phone_number")
                 if p_num:
                     welcome_text = (
-                        f"أهلاً بك مجدداً {html.escape(first_name)}! 👋\n\n"
-                        f"لديك تذكرة مفتوحة حالياً برقم <b>#{active_ticket['ticket_number']}</b>.\n"
-                        f"📱 رقم هاتفك المسجل: <code>{p_num}</code>\n\n"
-                        f"فريق الدعم الفني يعمل على طلبك، وسيقوم بالرد عليك هنا قريباً."
+                        f"Welcome back {html.escape(first_name)}! 👋\n\n"
+                        f"You have an open ticket: <b>#{active_ticket['ticket_number']}</b>.\n"
+                        f"📱 Registered phone: <code>{p_num}</code>\n\n"
+                        f"The IT Support team is working on your request and will reply shortly."
                     )
                     await self.send_message(chat_id, welcome_text, reply_markup={"remove_keyboard": True})
                 else:
                     welcome_text = (
-                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
-                        f"لديك تذكرة مفتوحة حالياً برقم <b>#{active_ticket['ticket_number']}</b>.\n\n"
-                        f"📲 <b>يرجى تزويدنا برقم هاتفك للتواصل وحل المشكلة سريعاً:</b>\n"
-                        f"👇 اضغط على الزر بالأسفل لمشاركة رقم هاتفك، أو اكتبه هنا في رسالة."
+                        f"Welcome back {html.escape(first_name)}! 👋\n\n"
+                        f"You have an open ticket: <b>#{active_ticket['ticket_number']}</b>.\n\n"
+                        f"📲 <b>Please share your phone number so we can reach you quickly:</b>\n"
+                        f"👇 Tap the button below to share your phone number, or type it here."
                     )
                     await self.send_message(chat_id, welcome_text, reply_markup=reply_keyboard)
             else:
@@ -535,18 +535,18 @@ class TelegramBot:
                 saved_phone = user_prof.get("phone_number") if user_prof else ""
                 if saved_phone:
                     welcome_text = (
-                        f"أهلاً بك {html.escape(first_name)}! 👋 مرحباً بك في الدعم الفني IT Support.\n\n"
-                        f"📱 رقم هاتفك المسجل: <code>{saved_phone}</code>\n\n"
-                        f"يرجى كتابة تفاصيل مشكلتك هنا (أو إرسال صور توضيحية) وسيتم فتح تذكرة دعم فني لك فوراً! 🎫"
+                        f"Welcome {html.escape(first_name)}! 👋 Welcome to IT Support.\n\n"
+                        f"📱 Registered phone: <code>{saved_phone}</code>\n\n"
+                        f"Please type your issue details here (or attach screenshots) and an IT ticket will be opened immediately! 🎫"
                     )
                     await self.send_message(chat_id, welcome_text, reply_markup={"remove_keyboard": True})
                 else:
                     welcome_text = (
-                        f"أهلاً بك {html.escape(first_name)}! 👋 مرحباً بك في الدعم الفني IT Support.\n\n"
-                        f"يرجى كتابة تفاصيل مشكلتك هنا في أي وقت وسيتم فتح تذكرة لك فوراً! 🎫\n\n"
-                        f"📲 يمكنك أيضاً مشاركة رقم هاتفك بالضغط على الزر بالأسفل لحفظه لدينا للتواصل:"
+                        f"Welcome {html.escape(first_name)}! 👋 Welcome to IT Support.\n\n"
+                        f"Please type your issue details here anytime to open a support ticket! 🎫\n\n"
+                        f"📲 You can also tap the button below to share and save your phone number for contact:"
                     )
-                    await self.send_message(chat_id, welcome_text, reply_markup=reply_keyboard)
+                    await self.send_message(chat_id, welcome_text, reply_keyboard=reply_keyboard)
             return
         elif text.startswith("/start "):
             text = text[7:].strip()
@@ -592,10 +592,10 @@ class TelegramBot:
             
             # Send acknowledgement
             if phone_acknowledged and len(text.strip()) <= 25:
-                ack_text = f"✅ تم حفظ رقم هاتفك <code>{extracted_phone}</code> في التذكرة <b>#{active_ticket['ticket_number']}</b> بنجاح!"
+                ack_text = f"✅ Your phone number <code>{extracted_phone}</code> has been updated for ticket <b>#{active_ticket['ticket_number']}</b>!"
                 await self.send_message(chat_id, ack_text, reply_markup={"remove_keyboard": True}, reply_to_message_id=msg_id)
             else:
-                ack_text = f"📥 تم استلام رسالتك وإضافتها إلى التذكرة <b>#{active_ticket['ticket_number']}</b>."
+                ack_text = f"📥 Your message has been received and added to ticket <b>#{active_ticket['ticket_number']}</b>."
                 await self.send_message(chat_id, ack_text, reply_to_message_id=msg_id)
             
             if self.broadcast:
@@ -625,17 +625,17 @@ class TelegramBot:
                 }
                 
                 faq_text = (
-                    f"💡 <b>اقتراح حل فوري: {html.escape(matched_faq['question'])}</b>\n"
+                    f"💡 <b>Suggested Resolution: {html.escape(matched_faq['question'])}</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"{html.escape(matched_faq['answer'])}\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"❓ <b>هل ساعدك هذا الحل في حل مشكلتك؟</b>"
+                    f"❓ <b>Did this solve your issue?</b>"
                 )
                 faq_keyboard = {
                     "inline_keyboard": [
                         [
-                            {"text": "✅ نعم، حلت المشكلة!", "callback_data": f"faq_solved:{matched_faq['id']}"},
-                            {"text": "🎫 فتح تذكرة مع فني", "callback_data": f"faq_open:{matched_faq['id']}"}
+                            {"text": "✅ Yes, issue solved!", "callback_data": f"faq_solved:{matched_faq['id']}"},
+                            {"text": "🎫 Open ticket with technician", "callback_data": f"faq_open:{matched_faq['id']}"}
                         ]
                     ]
                 }
@@ -677,16 +677,16 @@ class TelegramBot:
 
             if is_group:
                 # Group reply: Acknowledge ticket and prompt user to start bot in private
-                phone_note = f"\n📱 <i>رقم الهاتف: {phone_saved}</i>" if phone_saved else "\n📲 <i>يرجى إرسال رقم هاتفك للتواصل ومتابعة المشكلة.</i>"
+                phone_note = f"\n📱 <i>Phone: {phone_saved}</i>" if phone_saved else "\n📲 <i>Please share your phone number so we can contact you.</i>"
                 confirm_msg = (
-                    f"🎫 <b>تم فتح تذكرة جديدة #{new_ticket['ticket_number']}</b> لـ {user_mention}!\n"
-                    f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
-                    f"فريق الدعم الفني سيتواصل معك عبر المحادثة الخاصة.{phone_note}\n\n"
-                    f"👇 <i>يرجى فتح المحادثة الخاصة مع البوت لتسجيل رقم هاتفك واستلام الرد:</i>"
+                    f"🎫 <b>New ticket #{new_ticket['ticket_number']} opened</b> for {user_mention}!\n"
+                    f"🏷️ Category: <code>{html.escape(category)}</code>\n"
+                    f"The IT Support team will assist you via private chat.{phone_note}\n\n"
+                    f"👇 <i>Please start private chat with the bot to register your phone and receive direct updates:</i>"
                 )
                 inline_markup = {
                     "inline_keyboard": [
-                        [{"text": "💬 فتح المحادثة الخاصة مع البوت ومشاركة الرقم", "url": f"https://t.me/{bot_username}"}]
+                        [{"text": "💬 Open Private Chat & Share Phone", "url": f"https://t.me/{bot_username}"}]
                     ]
                 }
                 await self.send_message(chat_id, confirm_msg, reply_markup=inline_markup, reply_to_message_id=msg_id)
@@ -694,27 +694,27 @@ class TelegramBot:
                 # Private chat reply
                 reply_keyboard = {
                     "keyboard": [
-                        [{"text": "📱 مشاركة رقم هاتفي / Share Phone", "request_contact": True}]
+                        [{"text": "📱 Share Phone Number", "request_contact": True}]
                     ],
                     "resize_keyboard": True,
                     "one_time_keyboard": True
                 }
                 if phone_saved:
                     confirm_msg = (
-                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
-                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n"
-                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
-                        f"📱 رقم الهاتف المسجل: <code>{phone_saved}</code>\n\n"
-                        f"فريق الدعم الفني يعمل على طلبك وسيقوم بالرد عليك هنا قريباً."
+                        f"Welcome {html.escape(first_name)}! 👋\n\n"
+                        f"🎫 Ticket <b>#{new_ticket['ticket_number']}</b> has been opened successfully.\n"
+                        f"🏷️ Category: <code>{html.escape(category)}</code>\n"
+                        f"📱 Registered phone: <code>{phone_saved}</code>\n\n"
+                        f"The IT Support team is working on your request and will reply shortly."
                     )
                     markup = {"remove_keyboard": True}
                 else:
                     confirm_msg = (
-                        f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
-                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n"
-                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n\n"
-                        f"📲 <b>يرجى تزويدنا برقم هاتفك للتواصل وحل المشكلة سريعاً:</b>\n"
-                        f"👇 اضغط على الزر بالأسفل لمشاركة رقم هاتفك، أو اكتبه هنا في رسالة:"
+                        f"Welcome {html.escape(first_name)}! 👋\n\n"
+                        f"🎫 Ticket <b>#{new_ticket['ticket_number']}</b> has been opened successfully.\n"
+                        f"🏷️ Category: <code>{html.escape(category)}</code>\n\n"
+                        f"📲 <b>Please share your phone number so we can reach you quickly:</b>\n"
+                        f"👇 Tap the button below to share your phone number, or type it here in a message:"
                     )
                     markup = reply_keyboard
                 await self.send_message(chat_id, confirm_msg, reply_markup=markup, reply_to_message_id=msg_id)
@@ -754,17 +754,17 @@ class TelegramBot:
                     ans_url = f"https://api.telegram.org/bot{self.token}/answerCallbackQuery"
                     await self.client.post(ans_url, json={
                         "callback_query_id": cb_id,
-                        "text": f"شكراً لك! تم تسجيل تقييمك ({stars_str}) بنجاح. 🌟",
+                        "text": f"Thank you! Your rating ({stars_str}) has been recorded. 🌟",
                         "show_alert": False
                     })
 
                     # 2. Edit original message to show confirmed stars and remove buttons
                     ticket_num = updated_ticket.get("ticket_number", f"TK-{ticket_id}") if updated_ticket else f"TK-{ticket_id}"
                     thank_you_text = (
-                        f"✅ <b>تم حل التذكرة {ticket_num} وإغلاقها</b>\n\n"
-                        f"🙏 <b>شكراً جزيلاً لتقييمك!</b>\n"
-                        f"تم تسجيل تقييمك: <b>{stars_str}</b> ({rating} من 5)\n\n"
-                        f"نسعد دائماً بخدمتك ونتمنى لك يوماً سعيداً! 🌸"
+                        f"✅ <b>Ticket {ticket_num} Resolved & Closed</b>\n\n"
+                        f"🙏 <b>Thank you for your rating!</b>\n"
+                        f"Your rating: <b>{stars_str}</b> ({rating} of 5)\n\n"
+                        f"We are always glad to assist you. Have a great day! 🌸"
                     )
                     edit_url = f"https://api.telegram.org/bot{self.token}/editMessageText"
                     await self.client.post(edit_url, json={
@@ -779,7 +779,7 @@ class TelegramBot:
                         ticket_id=ticket_id,
                         sender_type="user",
                         sender_name=from_user.get("first_name", "User"),
-                        text=f"🌟 تقييم رضا العميل: {stars_str} ({rating}/5)"
+                        text=f"🌟 Customer Satisfaction Rating: {stars_str} ({rating}/5)"
                     )
 
                     # 4. Broadcast live update to Dashboard via WebSocket
@@ -804,7 +804,7 @@ class TelegramBot:
                     if not t:
                         await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
                             "callback_query_id": cb_id,
-                            "text": "⚠️ هذه التذكرة غير موجودة!",
+                            "text": "⚠️ Ticket not found!",
                             "show_alert": True
                         })
                         return
@@ -812,7 +812,7 @@ class TelegramBot:
                     if t.get("assigned_to"):
                         await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
                             "callback_query_id": cb_id,
-                            "text": f"⚠️ هذه التذكرة مستلمة بالفعل بواسطة: {t['assigned_to']}",
+                            "text": f"⚠️ Ticket is already claimed by: {t['assigned_to']}",
                             "show_alert": True
                         })
                         return
@@ -832,13 +832,13 @@ class TelegramBot:
                     # Answer callback
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
                         "callback_query_id": cb_id,
-                        "text": f"✅ تم استلام التذكرة #{t['ticket_number']} بنجاح!",
+                        "text": f"✅ Ticket #{t['ticket_number']} claimed successfully!",
                         "show_alert": False
                     })
 
                     # Edit group message to show claimed state and remove button
                     orig_text = msg.get("text", "")
-                    new_text = orig_text + f"\n\n✅ <b>تم استلام التذكرة بواسطة:</b> {html.escape(staff_name)} (قيد العمل ⚙️)"
+                    new_text = orig_text + f"\n\n✅ <b>Claimed by:</b> {html.escape(staff_name)} (In Progress ⚙️)"
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
                         "chat_id": chat_id,
                         "message_id": message_id,
@@ -851,7 +851,7 @@ class TelegramBot:
                         ticket_id=ticket_id,
                         sender_type="agent",
                         sender_name=staff_name,
-                        text=f"🙋‍♂️ تم استلام التذكرة من تيليجرام بواسطة: {staff_name}"
+                        text=f"🙋‍♂️ Ticket claimed from Telegram by: {staff_name}"
                     )
 
                     # Broadcast to dashboard
@@ -879,12 +879,12 @@ class TelegramBot:
                     increment_faq_helpful(faq_id)
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
                         "callback_query_id": cb_id,
-                        "text": "سعداء جداً بمساعدتك! 🌟",
+                        "text": "Glad we could help! 🌟",
                         "show_alert": False
                     })
                     solved_text = (
-                        "✅ <b>سعداء بأن المشكلة تم حلها!</b>\n\n"
-                        "إذا واجهتك أي استفسارات أو مشاكل أخرى في أي وقت، فريق الدعم الفني دائماً في خدمتك. 🙏"
+                        "✅ <b>Great! The issue is resolved.</b>\n\n"
+                        "If you need any further assistance, the IT Support team is always here to help. 🙏"
                     )
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
                         "chat_id": chat_id,
@@ -906,11 +906,11 @@ class TelegramBot:
                     
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
                         "callback_query_id": cb_id,
-                        "text": "جاري فتح تذكرة دعم فني لك مع الفريق... 🎫",
+                        "text": "Opening an IT support ticket for you... 🎫",
                         "show_alert": False
                     })
                     
-                    p_text = pending.get("text", "طلب دعم فني") if pending else "طلب دعم فني"
+                    p_text = pending.get("text", "IT Support Request") if pending else "IT Support Request"
                     p_msg_id = pending.get("msg_id", message_id) if pending else message_id
                     p_user_name = pending.get("full_name") if pending else (from_user.get("first_name", "User"))
                     p_username = pending.get("username") if pending else from_user.get("username", "")
@@ -945,9 +945,9 @@ class TelegramBot:
                     )
                     
                     open_msg = (
-                        f"🎫 <b>تم فتح التذكرة #{new_ticket['ticket_number']} بنجاح!</b>\n\n"
-                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
-                        f"فريق الدعم الفني يعمل على طلبك وسيقوم بالرد عليك هنا قريباً."
+                        f"🎫 <b>Ticket #{new_ticket['ticket_number']} opened successfully!</b>\n\n"
+                        f"🏷️ Category: <code>{html.escape(category)}</code>\n"
+                        f"The IT Support team is working on your request and will reply shortly."
                     )
                     await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
                         "chat_id": chat_id,

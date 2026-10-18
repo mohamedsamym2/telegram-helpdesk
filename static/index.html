@@ -485,13 +485,13 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
-                        <span>IT Team Telegram Group ID (معرف جروب الـ IT)</span>
+                        <span>IT Team Telegram Group ID</span>
                         <span class="text-[10px] text-indigo-400">Feature 1</span>
                     </label>
                     <input type="text" id="it-group-input" placeholder="-100xxxxxxxxxx" 
                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500">
                     <p class="text-[10px] text-slate-400 mt-1">
-                        أضف البوت لجروب فريق الـ IT وضع Chat ID لتلقي إشعارات التذاكر الجديدة مع زر <b>[استلام التذكرة]</b> وتنبيهات كسر مهلة الـ SLA فوراً.
+                        Add the bot to your IT team Telegram group and enter its Chat ID here to receive new ticket alerts with the <b>[Claim Ticket]</b> button and instant SLA breach notifications.
                     </p>
                 </div>
 
@@ -536,19 +536,19 @@
                     <form onsubmit="handleCreateFaq(event)" class="space-y-3">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Keywords / الكلمات المفتاحية (comma-separated)</label>
-                                <input type="text" id="faq-keywords" required placeholder="wifi, واي فاي, باسورد, انترنت" 
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Keywords (comma-separated)</label>
+                                <input type="text" id="faq-keywords" required placeholder="wifi, internet, password, network" 
                                        class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
                             </div>
                             <div>
-                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Article Title / عنوان المشكلة</label>
-                                <input type="text" id="faq-question" required placeholder="كيفية الاتصال بشبكة الواي فاي للشركة" 
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Article Title / Issue</label>
+                                <input type="text" id="faq-question" required placeholder="e.g. How to connect to company Wi-Fi" 
                                        class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
                             </div>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Solution / نص الحل المقترح للمستخدم</label>
-                            <textarea id="faq-answer" rows="3" required placeholder="اكتب الحل المقترح بالتفصيل هنا..." 
+                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Solution / Suggested Answer</label>
+                            <textarea id="faq-answer" rows="3" required placeholder="Type the recommended step-by-step resolution here..." 
                                       class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"></textarea>
                         </div>
                         <div class="flex items-center justify-end gap-2 pt-1">
@@ -607,12 +607,12 @@
                     <form onsubmit="handleCreateCanned(event)" class="space-y-3">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Button Title / عنوان الزر</label>
-                                <input type="text" id="canned-title" required placeholder="مثال: فحص كابل الإنترنت" 
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Button Title</label>
+                                <input type="text" id="canned-title" required placeholder="e.g. Check Network Cable" 
                                        class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500">
                             </div>
                             <div>
-                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Category / القسم</label>
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Category</label>
                                 <select id="canned-category" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
                                     <option value="General">📁 General</option>
                                     <option value="Network">🌐 Network</option>
@@ -623,8 +623,8 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Template Message / نص الرسالة الجاهزة</label>
-                            <textarea id="canned-text" rows="3" required placeholder="اكتب نص الرد الجاهز الذي سيتم إدراجه بضغطة زر واحدة..." 
+                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Template Message</label>
+                            <textarea id="canned-text" rows="3" required placeholder="Type the pre-configured reply message that will be inserted with one click..." 
                                       class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"></textarea>
                         </div>
                         <div class="flex items-center justify-end gap-2 pt-1">

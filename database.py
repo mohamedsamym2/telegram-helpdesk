@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 import hashlib
 import secrets
 from datetime import datetime, timedelta
@@ -749,17 +750,26 @@ def init_default_canned_responses():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM canned_responses")
-    if cursor.fetchone()[0] == 0:
-        defaults = [
-            ("🔄 إعادة تشغيل الجهاز", "يرجى إعادة تشغيل جهاز الكمبيوتر أو الراوتر وتجربة الأمر مجدداً، وأخبرنا هل ما زالت المشكلة قائمة؟", "Hardware"),
-            ("🌐 فحص كابل الشبكة", "يرجى التأكد من توصيل كابل الإنترنت بإحكام في الجهاز، والتأكد من إضاءة لمبة كارت الشبكة الخضراء.", "Network"),
-            ("📸 طلب لقطة شاشة", "يرجى إرسال لقطة شاشة (Screenshot) أو صورة بكاميرا الهاتف لرسالة الخطأ التي تظهر لك لنتمكن من مساعدتك فوراً.", "General"),
-            ("⚙️ جاري الفحص والمتابعة", "تم استلام تفاصيل مشكلتك وجاري فحصها والعمل عليها الآن بواسطة مهندس الدعم الفني.", "General"),
-            ("📞 طلب اتصال AnyDesk", "يرجى تشغيل برنامج AnyDesk وتزويدنا برقم الـ ID (الرمز المكون من 9 أرقام) للاتصال بجهازك وحل المشكلة فوراً.", "Software"),
-            ("🔑 إعادة تعيين كلمة المرور", "تمت إعادة تعيين كلمة المرور الخاصة بك بنجاح. يرجى تسجيل الدخول باستخدام كلمة المرور المؤقتة وتغييرها فور الدخول.", "Email & Accounts"),
-            ("✅ تم الحل والتأكيد", "تم الانتهاء من حل المشكلة من جانبنا بنجاح. يرجى التجربة الآن والتأكيد معنا.", "General"),
-        ]
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    count = cursor.fetchone()[0]
+    
+    defaults = [
+        ("🔄 Restart Device", "Please restart your computer or router and check again. Let us know if the issue persists.", "Hardware"),
+        ("🌐 Check Network Cable", "Please ensure your network cable is firmly plugged into your PC and the link LED is active.", "Network"),
+        ("📸 Request Screenshot", "Please send a screenshot or photo of the error message so we can investigate immediately.", "General"),
+        ("⚙️ Investigating Issue", "Your ticket has been received and our IT support team is actively investigating it.", "General"),
+        ("📞 AnyDesk Remote Session", "Please launch AnyDesk and provide your 9-digit address code so our engineer can connect remotely.", "Software"),
+        ("🔑 Password Reset Complete", "Your password has been reset. Please log in using the temporary credentials and update it immediately.", "Email & Accounts"),
+        ("✅ Resolved & Confirm", "The issue has been resolved. Please test now and confirm if everything is working normally.", "General"),
+    ]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # If empty or if existing defaults contain Arabic, reseed with clean English defaults
+    cursor.execute("SELECT id, title, text FROM canned_responses")
+    rows = cursor.fetchall()
+    has_arabic = any(re.search(r'[\u0600-\u06FF]', r[1] + r[2]) for r in rows) if rows else False
+
+    if count == 0 or has_arabic:
+        cursor.execute("DELETE FROM canned_responses WHERE id IN (SELECT id FROM canned_responses)")
         for title, text, cat in defaults:
             cursor.execute("INSERT INTO canned_responses (title, text, category, created_at) VALUES (?, ?, ?, ?)",
                            (title, text, cat, now))
@@ -801,35 +811,43 @@ def init_default_faqs():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM faq_articles")
-    if cursor.fetchone()[0] == 0:
-        defaults = [
-            (
-                "wifi, واي فاي, وايفاي, باسورد الواي فاي, انترنت, شبكة, نت",
-                "كيفية الاتصال بشبكة الإنترنت / الواي فاي للشركة",
-                "اسم الشبكة الخاصة بالموظفين هي: Company-Staff.\nكلمة المرور: Welcome@2026.\nفي حال واجهت انقطاع في الخدمة تأكد من تفعيل زر Wi-Fi وإعادة تشغيل محول الشبكة."
-            ),
-            (
-                "طابعة, برنتر, printer, طابعه, طباعة, تطبع",
-                "كيفية تعريف أو الاتصال بالطابعة الشبكية",
-                "للاتصال بالطابعة الشبكية:\n1. اضغط على زر Windows + R\n2. اكتب \\\\print-server واضغط Enter\n3. اضغط مرتين على الطابعة الخاصة بقسمك للتثبيت التلقائي.\nإذا كانت الطابعة معلقة، تأكد من وجود ورق وحبر كافيين."
-            ),
-            (
-                "باسورد, كلمة السر, نسيت, قفل, locked, password, حساب",
-                "إعادة تعيين كلمة المرور أو فك قفل الحساب",
-                "إذا تم قفل حسابك بسبب محاولات دخول خاطئة، ينتظر النظام تلقائياً 5 دقائق لفك القفل.\nإذا نسيت كلمة المرور بالكامل، يرجى كتابة اسم المستخدم ورقم هاتفك هنا وسيقوم مهندس الـ IT بتعيين كلمة مرور جديدة لك فوراً."
-            ),
-            (
-                "anydesk, اني ديسك, انيديسك, ريموت, عن بعد, remote",
-                "تحميل وتشغيل برنامج الدعم عن بعد AnyDesk",
-                "يرجى فتح المتصفح والدخول إلى https://anydesk.com وتحميل البرنامج مجاناً.\nبعد تشغيل البرنامج، يرجى تزويد مهندس الدعم بالرمز المكون من 9 أرقام (Your Address) للسماح له بالاتصال بجهازك وحل المشكلة فوراً."
-            ),
-            (
-                "outlook, اوتلوك, ايميل, بريد, email, ميل",
-                "مشاكل البريد الإلكتروني Outlook أو عدم وصول الرسائل",
-                "1. تأكد من اتصال الإنترنت وظهور عبارة Connected أسفل نافذة الـ Outlook.\n2. اضغط على تبويب Send/Receive ثم Send/Receive All Folders.\n3. إذا طلب كلمة المرور، يرجى إعادة إدخالها والتأكد من عدم تفعيل Caps Lock."
-            )
-        ]
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    count = cursor.fetchone()[0]
+
+    defaults = [
+        (
+            "wifi, wireless, network, internet, connection, access",
+            "How to connect to the corporate Wi-Fi network",
+            "The official staff Wi-Fi network is: Company-Staff.\nPassword: Welcome@2026.\nIf you experience disconnections, toggle Wi-Fi off and on, or restart your network adapter."
+        ),
+        (
+            "printer, print, paper, toner, network printer, spooler",
+            "How to connect to department network printers",
+            "To connect to a network printer:\n1. Press Windows + R.\n2. Type \\\\print-server and press Enter.\n3. Double-click your department printer to install drivers automatically.\nIf printing is stuck, ensure the tray has paper and toner is sufficient."
+        ),
+        (
+            "password, reset, forgot, locked, account, login, credentials",
+            "Password reset and locked account unlocking",
+            "If your account is locked due to multiple incorrect attempts, the system unlocks it automatically after 5 minutes.\nIf you forgot your password completely, reply with your username and an IT specialist will reset it for you immediately."
+        ),
+        (
+            "anydesk, remote, screen share, assistance, connect",
+            "How to download and run AnyDesk for remote IT support",
+            "Please open your browser, visit https://anydesk.com, and download the free client.\nOnce opened, provide your 9-digit address code to the technician so they can connect securely to your PC."
+        ),
+        (
+            "outlook, email, mail, inbox, send, receive, sync",
+            "Troubleshooting Microsoft Outlook or email delivery issues",
+            "1. Ensure your internet connection is active and Outlook status shows 'Connected'.\n2. Click 'Send / Receive' > 'Send/Receive All Folders'.\n3. If prompted for password, enter your domain credentials and ensure Caps Lock is off."
+        )
+    ]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute("SELECT id, question, answer FROM faq_articles")
+    rows = cursor.fetchall()
+    has_arabic = any(re.search(r'[\u0600-\u06FF]', r[1] + r[2]) for r in rows) if rows else False
+
+    if count == 0 or has_arabic:
+        cursor.execute("DELETE FROM faq_articles WHERE id IN (SELECT id FROM faq_articles)")
         for kw, q, a in defaults:
             cursor.execute("INSERT INTO faq_articles (keywords, question, answer, is_active, helpful_count, created_at) VALUES (?, ?, ?, 1, 0, ?)",
                            (kw, q, a, now))
