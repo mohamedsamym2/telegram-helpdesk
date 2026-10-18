@@ -599,11 +599,13 @@ class TelegramBot:
                 await self.send_message(chat_id, ack_text, reply_to_message_id=msg_id)
             
             if self.broadcast:
+                refreshed_ticket = get_ticket_details(active_ticket["id"])
                 await self.broadcast({
                     "type": "new_message",
                     "ticket_id": active_ticket["id"],
                     "ticket_number": active_ticket["ticket_number"],
-                    "message": msg_record
+                    "message": msg_record,
+                    "ticket": refreshed_ticket
                 })
         else:
             # 5. Check Knowledge Base / FAQ match before opening a new ticket in private chat

@@ -448,13 +448,14 @@ function getSlaInfo(ticket) {
         };
     }
 
-    // When IT sends a message/reply to user, SLA stops immediately!
-    if (ticket.first_response_at) {
+    // When IT has replied to user and is waiting on user response, SLA is paused
+    const isPaused = ticket.sla_paused === 1 || ticket.last_sender_type === 'agent';
+    if (isPaused) {
         return {
-            text: 'SLA Stopped (IT Responded)',
-            badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold',
+            text: '⏸️ SLA Paused (Waiting on User)',
+            badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold',
             isBreached: false,
-            isStopped: true
+            isPaused: true
         };
     }
 
@@ -490,13 +491,13 @@ function getSlaInfo(ticket) {
             }
             if (diffMins <= 60) {
                 return {
-                    text: timeStr,
+                    text: `${timeStr} (Active)`,
                     badgeClass: 'bg-amber-500/25 text-amber-300 border-amber-500/50',
                     isBreached: false
                 };
             }
             return {
-                text: timeStr,
+                text: `${timeStr} (Active)`,
                 badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
                 isBreached: false
             };

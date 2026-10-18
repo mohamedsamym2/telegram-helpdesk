@@ -180,6 +180,9 @@ def init_db():
         ("rating", "INTEGER DEFAULT NULL"),
         ("rating_comment", "TEXT DEFAULT NULL"),
         ("rated_at", "TEXT DEFAULT NULL"),
+        ("last_sender_type", "TEXT DEFAULT 'user'"),
+        ("sla_paused", "INTEGER DEFAULT 0"),
+        ("sla_paused_at", "TEXT DEFAULT NULL"),
     ]
     for col_name, col_type in columns_to_add:
         try:
@@ -556,14 +559,57 @@ def add_message(ticket_id: int, sender_type: str, sender_name: str, text: str,
     """, (ticket_id, sender_type, sender_name, text, media_type, media_url, now, telegram_message_id, is_internal))
     msg_id = cursor.lastrowid
     
-    # If external agent reply, record first_response_at if not set
+    # Manage SLA Pause/Resume Lifecycle
     if sender_type == "agent" and not is_internal:
-        cursor.execute("SELECT first_response_at FROM tickets WHERE id = ?", (ticket_id,))
+        cursor.execute("SELECT first_response_at, sla_paused FROM tickets WHERE id = ?", (ticket_id,))
         t_row = cursor.fetchone()
         if t_row and not t_row["first_response_at"]:
             cursor.execute("UPDATE tickets SET first_response_at = ? WHERE id = ?", (now, ticket_id))
+        
+        # When IT sends message to user: PAUSE SLA
+        cursor.execute("""
+            UPDATE tickets 
+            SET sla_paused = 1, 
+                sla_paused_at = CASE WHEN sla_paused = 0 OR sla_paused_at IS NULL THEN ? ELSE sla_paused_at END,
+                last_sender_type = 'agent',
+                updated_at = ?
+            WHERE id = ?
+        """, (now, now, ticket_id))
 
-    cursor.execute("UPDATE tickets SET updated_at = ? WHERE id = ?", (now, ticket_id))
+    elif sender_type == "user":
+        # When user replies back: RESUME SLA and push deadline forward by paused duration
+        cursor.execute("SELECT sla_paused, sla_paused_at, sla_deadline FROM tickets WHERE id = ?", (ticket_id,))
+        t_row = cursor.fetchone()
+        if t_row and t_row["sla_paused"] and t_row["sla_paused_at"]:
+            try:
+                paused_dt = datetime.strptime(t_row["sla_paused_at"], "%Y-%m-%d %H:%M:%S")
+                now_dt = datetime.strptime(now, "%Y-%m-%d %H:%M:%S")
+                diff_sec = max(0, int((now_dt - paused_dt).total_seconds()))
+                if t_row["sla_deadline"] and diff_sec > 0:
+                    deadline_dt = datetime.strptime(t_row["sla_deadline"], "%Y-%m-%d %H:%M:%S")
+                    new_deadline_str = (deadline_dt + timedelta(seconds=diff_sec)).strftime("%Y-%m-%d %H:%M:%S")
+                    cursor.execute("""
+                        UPDATE tickets 
+                        SET sla_deadline = ?, sla_paused = 0, sla_paused_at = NULL, last_sender_type = 'user', updated_at = ?
+                        WHERE id = ?
+                    """, (new_deadline_str, now, ticket_id))
+                else:
+                    cursor.execute("""
+                        UPDATE tickets 
+                        SET sla_paused = 0, sla_paused_at = NULL, last_sender_type = 'user', updated_at = ?
+                        WHERE id = ?
+                    """, (now, ticket_id))
+            except Exception:
+                cursor.execute("""
+                    UPDATE tickets 
+                    SET sla_paused = 0, sla_paused_at = NULL, last_sender_type = 'user', updated_at = ?
+                    WHERE id = ?
+                """, (now, ticket_id))
+        else:
+            cursor.execute("UPDATE tickets SET last_sender_type = 'user', updated_at = ? WHERE id = ?", (now, ticket_id))
+    else:
+        cursor.execute("UPDATE tickets SET updated_at = ? WHERE id = ?", (now, ticket_id))
+
     conn.commit()
     
     cursor.execute("SELECT * FROM messages WHERE id = ?", (msg_id,))
@@ -731,7 +777,7 @@ def get_tickets_for_sla_check() -> List[Dict[str, Any]]:
         SELECT * FROM tickets 
         WHERE status IN ('open', 'in_progress') 
           AND sla_deadline IS NOT NULL 
-          AND (first_response_at IS NULL OR first_response_at = '')
+          AND (sla_paused = 0 OR sla_paused IS NULL)
     """)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
