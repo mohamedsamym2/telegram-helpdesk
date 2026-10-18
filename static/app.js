@@ -369,8 +369,13 @@ function updateBadgeCounters(stats) {
 
     // Queue buttons show count matching the selected status filter:
     const statusKey = currentFilter === 'all' ? 'all' : currentFilter;
-    const mineCount = stats.mine ? (stats.mine[statusKey] ?? stats.mine.all) : (stats.assigned_to_me ?? 0);
-    const unassignedCount = stats.unassigned ? (stats.unassigned[statusKey] ?? stats.unassigned.all) : (stats.unassigned ?? 0);
+    const mineCount = (typeof stats.mine === 'object' && stats.mine !== null)
+        ? (stats.mine[statusKey] ?? stats.mine.all ?? 0)
+        : (Number(stats.assigned_to_me) || 0);
+
+    const unassignedCount = (typeof stats.unassigned === 'object' && stats.unassigned !== null)
+        ? (stats.unassigned[statusKey] ?? stats.unassigned.all ?? 0)
+        : (Number(stats.unassigned) || 0);
 
     if (elMine) elMine.textContent = `(${mineCount})`;
     if (elUnassigned) elUnassigned.textContent = `(${unassignedCount})`;
@@ -795,7 +800,7 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
 
             statusContainer.innerHTML = `
                 ${progressBtn}
-                <button onclick="changeStatus('closed')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95 whitespace-nowrap">
+                <button onclick="handleOpenResolveModal()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95 whitespace-nowrap">
                     <i class="fa-solid fa-circle-check"></i>
                     <span>Resolve & Close</span>
                 </button>
@@ -997,9 +1002,8 @@ function setReplyMode(mode) {
         }
         if (sendBtn) {
             sendBtn.className = 'px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-600/20 transition active:scale-95';
+            sendBtn.innerHTML = `<span id="send-reply-btn-text">Save Internal Note</span><i id="send-reply-btn-icon" class="fa-solid fa-lock text-xs"></i>`;
         }
-        if (sendText) sendText.textContent = 'Save Internal Note';
-        if (sendIcon) sendIcon.className = 'fa-solid fa-lock text-xs';
         if (textarea) {
             textarea.placeholder = 'Write an internal team note (Only visible to IT staff, never sent to customer)...';
             textarea.classList.add('border-amber-500/50');
@@ -1019,9 +1023,8 @@ function setReplyMode(mode) {
         }
         if (sendBtn) {
             sendBtn.className = 'px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition active:scale-95';
+            sendBtn.innerHTML = `<span id="send-reply-btn-text">Send Private Reply</span><i id="send-reply-btn-icon" class="fa-solid fa-paper-plane text-xs"></i>`;
         }
-        if (sendText) sendText.textContent = 'Send Private Reply';
-        if (sendIcon) sendIcon.className = 'fa-solid fa-paper-plane text-xs';
         if (textarea) {
             textarea.placeholder = 'Type your reply here... Delivered PRIVATELY to the user in their 1-on-1 chat';
             textarea.classList.remove('border-amber-500/50', 'focus:border-amber-500');
@@ -1096,6 +1099,10 @@ async function sendReply(e) {
 // Change Status
 async function changeStatus(newStatus) {
     if (!currentTicketId) return;
+    if (newStatus === 'resolved' || newStatus === 'closed') {
+        handleOpenResolveModal();
+        return;
+    }
     try {
         const res = await fetch(`/api/tickets/${currentTicketId}/status`, {
             method: 'POST',
@@ -1112,6 +1119,94 @@ async function changeStatus(newStatus) {
         }
     } catch (e) {
         console.error('Error changing status', e);
+    }
+}
+
+// Open Resolve & Close Ticket Modal with Assignment Verification
+function handleOpenResolveModal() {
+    if (!currentTicketId) return;
+    const ticket = cachedTickets.find(t => t.id === currentTicketId);
+    if (!ticket) return;
+
+    // 1. Enforce Assignment check: Cannot resolve unassigned ticket!
+    const assigned = ticket.assigned_to && ticket.assigned_to.trim().toLowerCase() !== 'unassigned' ? ticket.assigned_to.trim() : '';
+    if (!assigned) {
+        alert('⚠️ Assignment Required:\nThis ticket must be assigned to an IT technician before it can be resolved & closed.\n\nPlease assign the ticket or click "Take Ticket" first.');
+        return;
+    }
+
+    // Populate modal details
+    const elTicketNum = document.getElementById('resolve-modal-ticket-num');
+    const elUser = document.getElementById('resolve-modal-user');
+    const elAssignee = document.getElementById('resolve-modal-assignee');
+    if (elTicketNum) elTicketNum.textContent = `#${ticket.ticket_number || ticket.id}`;
+    if (elUser) elUser.textContent = `${ticket.user_name || 'User'} (${ticket.username ? '@' + ticket.username : 'No username'})`;
+    if (elAssignee) elAssignee.textContent = assigned;
+
+    // Pre-fill default resolution template
+    setResolveTemplate('resolved_confirm');
+
+    // Show modal
+    const modal = document.getElementById('resolve-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeResolveModal() {
+    const modal = document.getElementById('resolve-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function setResolveTemplate(tplKey) {
+    const textarea = document.getElementById('resolve-reply-text');
+    if (!textarea) return;
+
+    const templates = {
+        'resolved_confirm': 'The issue has been resolved. Please test now and confirm if everything is working normally. Thank you for contacting IT Support.',
+        'restart_solved': 'The hardware device / network connection was restarted and is now functioning normally. Please test and confirm.',
+        'password_restored': 'Your password and user account access have been reset and verified. Please test logging in now.',
+        'fix_applied': 'The technical issue has been investigated and the required configuration fix has been applied. Everything is now functioning as expected.'
+    };
+
+    textarea.value = templates[tplKey] || templates['resolved_confirm'];
+    textarea.focus();
+}
+
+async function submitResolveTicket(e) {
+    e.preventDefault();
+    if (!currentTicketId) return;
+
+    const textarea = document.getElementById('resolve-reply-text');
+    const text = textarea ? textarea.value.trim() : '';
+    if (!text) {
+        alert('Please provide a resolution explanation message to the customer.');
+        return;
+    }
+
+    const btn = document.getElementById('btn-submit-resolve');
+    const btnText = document.getElementById('btn-submit-resolve-text');
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Resolving & Closing...';
+
+    try {
+        const res = await fetch(`/api/tickets/${currentTicketId}/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolution_reply: text })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            closeResolveModal();
+            await loadTicketDetails(currentTicketId, true);
+            loadTickets();
+            checkBotStatus();
+        } else {
+            alert('Failed to resolve ticket: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Server communication error');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = 'Send Resolution & Close Ticket';
     }
 }
 
@@ -1202,7 +1297,7 @@ function renderCannedBar() {
     container.innerHTML = cachedCannedResponses.slice(0, 10).map(c => `
         <button type="button" onclick="insertCannedText(${c.id})" 
                 class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 hover:border-slate-600 transition whitespace-nowrap active:scale-95 text-[11px]"
-                title="${escapeHtml(c.template_text)}">
+                title="${escapeHtml(c.text || c.template_text || '')}">
             ${escapeHtml(c.title)}
         </button>
     `).join('');
@@ -1213,7 +1308,7 @@ function insertCannedText(id) {
     if (!item) return;
     const textarea = document.getElementById('reply-text');
     if (textarea) {
-        textarea.value = item.template_text;
+        textarea.value = item.text || item.template_text || '';
         textarea.focus();
     }
 }
@@ -1243,7 +1338,7 @@ function renderCannedModalList() {
                     <span class="font-bold text-xs text-white">${escapeHtml(c.title)}</span>
                     <span class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px]">${escapeHtml(c.category || 'General')}</span>
                 </div>
-                <p class="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">${escapeHtml(c.template_text)}</p>
+                <p class="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">${escapeHtml(c.text || c.template_text || '')}</p>
             </div>
             <button onclick="handleDeleteCanned(${c.id})" title="Delete template" class="w-7 h-7 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition shrink-0">
                 <i class="fa-solid fa-trash-can text-xs"></i>

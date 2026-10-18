@@ -308,20 +308,20 @@ class TelegramBot:
             survey_keyboard = {
                 "inline_keyboard": [
                     [
-                        {"text": "⭐ 1", "callback_data": f"rate:{ticket['id']}:1"},
-                        {"text": "⭐⭐ 2", "callback_data": f"rate:{ticket['id']}:2"},
-                        {"text": "⭐⭐⭐ 3", "callback_data": f"rate:{ticket['id']}:3"},
-                        {"text": "⭐⭐⭐⭐ 4", "callback_data": f"rate:{ticket['id']}:4"},
-                        {"text": "⭐⭐⭐⭐⭐ 5", "callback_data": f"rate:{ticket['id']}:5"},
+                        {"text": "1 ⭐", "callback_data": f"rate:{ticket['id']}:1"},
+                        {"text": "2 ⭐", "callback_data": f"rate:{ticket['id']}:2"},
+                        {"text": "3 ⭐", "callback_data": f"rate:{ticket['id']}:3"},
+                        {"text": "4 ⭐", "callback_data": f"rate:{ticket['id']}:4"},
+                        {"text": "5 ⭐", "callback_data": f"rate:{ticket['id']}:5"},
                     ]
                 ]
             }
             text = (
                 f"✅ <b>Ticket {ticket_num} has been resolved!</b>\n\n"
                 f"Thank you for contacting IT Support. 🙏\n\n"
-                f"🌟 <b>Your feedback helps us improve:</b>\n"
-                f"How would you rate your IT support experience?\n"
-                f"<i>(Tap the stars from 1 to 5 to submit your rating)</i>"
+                f"🌟 <b>Customer Satisfaction Survey:</b>\n"
+                f"How would you rate the IT support you received?\n"
+                f"<i>(1 = Poor, 3 = Good, 5 = Excellent)</i>"
             )
             await self.send_message(user_id, text, reply_markup=survey_keyboard)
         elif new_status == "in_progress":

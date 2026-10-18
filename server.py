@@ -200,6 +200,10 @@ class ReplyPayload(BaseModel):
 
 class StatusPayload(BaseModel):
     status: str
+    resolution_reply: Optional[str] = None
+
+class ResolvePayload(BaseModel):
+    resolution_reply: str
 
 class UpdateUserPayload(BaseModel):
     phone_number: Optional[str] = None
@@ -447,7 +451,26 @@ async def change_ticket_status(ticket_id: int, payload: StatusPayload, user: str
     ticket = get_ticket_details(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Enforce assignment rule: Ticket cannot be closed/resolved without being assigned to an agent
+    if new_status in ('resolved', 'closed'):
+        assigned = ticket.get("assigned_to")
+        if not assigned or assigned.strip().lower() in ("", "unassigned", "none"):
+            raise HTTPException(status_code=400, detail="Ticket cannot be closed or resolved without being assigned to a technician. Please assign the ticket first.")
         
+    # If a resolution reply is provided with status change, send it first
+    if payload.resolution_reply and payload.resolution_reply.strip() and new_status in ('resolved', 'closed'):
+        reply_text = payload.resolution_reply.strip()
+        agent_name = user or ticket.get("assigned_to") or "IT Support"
+        await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+        msg = add_message(ticket_id, sender_type="agent", sender_name=agent_name, text=reply_text)
+        await manager.broadcast({
+            "type": "new_message",
+            "ticket_id": ticket_id,
+            "message": msg,
+            "ticket_status": new_status
+        })
+
     try:
         updated = update_ticket_status(ticket_id, new_status)
     except ValueError as e:
@@ -464,6 +487,47 @@ async def change_ticket_status(ticket_id: int, payload: StatusPayload, user: str
     })
     
     return {"ok": True, "ticket": updated}
+
+@app.post("/api/tickets/{ticket_id}/resolve")
+async def resolve_ticket_endpoint(ticket_id: int, payload: ResolvePayload, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    # Enforce assignment check
+    assigned = ticket.get("assigned_to")
+    if not assigned or assigned.strip().lower() in ("", "unassigned", "none"):
+        raise HTTPException(status_code=400, detail="Ticket cannot be resolved without being assigned to a technician. Please assign the ticket first.")
+        
+    reply_text = payload.resolution_reply.strip()
+    if not reply_text:
+        raise HTTPException(status_code=400, detail="A resolution message to the customer is required to resolve and close this ticket.")
+        
+    agent_name = user or assigned or "IT Support"
+    # Send resolution reply privately to customer on Telegram
+    send_res = await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+    msg = add_message(ticket_id, sender_type="agent", sender_name=agent_name, text=reply_text)
+    
+    # Mark resolved in DB
+    updated = update_ticket_status(ticket_id, "resolved")
+    
+    # Trigger 5-star CSAT survey on Telegram
+    await bot.notify_ticket_status(ticket, "resolved")
+    
+    # Broadcast updates to dashboard clients
+    await manager.broadcast({
+        "type": "new_message",
+        "ticket_id": ticket_id,
+        "message": msg,
+        "ticket_status": "resolved"
+    })
+    await manager.broadcast({
+        "type": "status_changed",
+        "ticket_id": ticket_id,
+        "status": "resolved"
+    })
+    
+    return {"ok": True, "ticket": updated, "delivered": send_res.get("delivered", False)}
 
 @app.post("/api/tickets/{ticket_id}/update-info")
 async def update_ticket_info(ticket_id: int, payload: UpdateUserPayload, user: str = Depends(get_current_user)):
@@ -540,6 +604,9 @@ async def change_ticket_category_endpoint(ticket_id: int, payload: CategoryPaylo
 @app.get("/api/canned-responses")
 async def list_canned_responses(user: str = Depends(get_current_user)):
     responses = get_canned_responses()
+    for r in responses:
+        if "template_text" not in r:
+            r["template_text"] = r.get("text", "")
     return {"canned_responses": responses}
 
 @app.post("/api/canned-responses")

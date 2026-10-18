@@ -837,6 +837,75 @@
                     </div>
                 </div>
             </div>
+    <!-- Resolve & Close Ticket Modal -->
+    <div id="resolve-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+                    <span>Resolve & Close Ticket <span id="resolve-modal-ticket-num" class="text-indigo-400 font-mono"></span></span>
+                </h3>
+                <button onclick="closeResolveModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs space-y-1">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Recipient:</span>
+                    <span id="resolve-modal-user" class="font-semibold text-slate-200"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Assigned Technician:</span>
+                    <span id="resolve-modal-assignee" class="font-semibold text-indigo-300"></span>
+                </div>
+            </div>
+
+            <!-- Quick Resolution Message Templates -->
+            <div class="space-y-1.5">
+                <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick Resolution Templates:</label>
+                <div class="flex flex-wrap gap-1.5 text-[11px]" id="resolve-quick-templates">
+                    <button type="button" onclick="setResolveTemplate('resolved_confirm')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600/60 transition active:scale-95">
+                        ✅ Resolved & Confirm
+                    </button>
+                    <button type="button" onclick="setResolveTemplate('restart_solved')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600/60 transition active:scale-95">
+                        🔄 Restart / Reconnect
+                    </button>
+                    <button type="button" onclick="setResolveTemplate('password_restored')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600/60 transition active:scale-95">
+                        🔑 Access Restored
+                    </button>
+                    <button type="button" onclick="setResolveTemplate('fix_applied')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600/60 transition active:scale-95">
+                        ⚙️ Fix Applied
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resolution Reply Text Area -->
+            <form id="resolve-form" onsubmit="submitResolveTicket(event)" class="space-y-4">
+                <div class="space-y-1.5">
+                    <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>Resolution Message to Customer (Required):</span>
+                        <span class="text-[10px] text-indigo-400 lowercase font-normal">Sent privately on Telegram</span>
+                    </label>
+                    <textarea id="resolve-reply-text" rows="4" required
+                              placeholder="Describe how the problem was resolved so the customer knows what was done..."
+                              class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none transition leading-relaxed"></textarea>
+                    <p class="text-[11px] text-slate-400 flex items-center gap-1.5 mt-1">
+                        <i class="fa-solid fa-star text-amber-400 text-[10px]"></i>
+                        A customer satisfaction survey (1-5 stars) will be sent automatically right after this message.
+                    </p>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700">
+                    <button type="button" onclick="closeResolveModal()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold transition">
+                        Cancel
+                    </button>
+                    <button type="submit" id="btn-submit-resolve" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition active:scale-95">
+                        <i class="fa-solid fa-check"></i>
+                        <span id="btn-submit-resolve-text">Send Resolution & Close Ticket</span>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
