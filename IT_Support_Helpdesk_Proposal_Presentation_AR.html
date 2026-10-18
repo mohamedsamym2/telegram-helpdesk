@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>نظام إدارة الدعم الفني وتذاكر الـ IT عبر تليجرام - عرض فني متكامل</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm 12mm 10mm 12mm;
+            @bottom-right {
+                content: "صفحة " counter(page) " من " counter(pages);
+                font-size: 8pt;
+                color: #94a3b8;
+                font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            }
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            font-size: 8.5pt;
+            line-height: 1.45;
+            direction: rtl;
+            text-align: right;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        .header-cover {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+            color: #ffffff;
+            padding: 22px 24px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+        }
+        .badge-cover {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.35);
+            border: 1px solid rgba(165, 180, 252, 0.5);
+            color: #c7d2fe;
+            padding: 3px 12px;
+            border-radius: 14px;
+            font-size: 7.5pt;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        h1.cover-title {
+            font-size: 18pt;
+            font-weight: 800;
+            line-height: 1.3;
+            margin-bottom: 6px;
+            color: #ffffff;
+        }
+        p.cover-subtitle {
+            font-size: 9.5pt;
+            color: #cbd5e1;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+        .cover-meta {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            padding-top: 10px;
+            font-size: 7.5pt;
+            color: #cbd5e1;
+        }
+        .cover-meta span strong {
+            color: #ffffff;
+        }
+        
+        h2.section-title {
+            font-size: 11pt;
+            font-weight: 800;
+            color: #0f172a;
+            border-bottom: 2px solid #4f46e5;
+            padding-bottom: 3px;
+            margin-top: 12px;
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+        p {
+            margin-bottom: 6px;
+            color: #334155;
+            font-size: 8.5pt;
+            text-align: justify;
+        }
+        
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 9px 11px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }
+        .card.highlight {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+        }
+        .card h3 {
+            font-size: 9.2pt;
+            font-weight: 700;
+            color: #1e1b4b;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .card h4 {
+            font-size: 8.5pt;
+            font-weight: 700;
+            color: #312e81;
+            margin-bottom: 3px;
+        }
+        .card p, .card ul {
+            font-size: 8pt;
+            color: #475569;
+            line-height: 1.35;
+        }
+        .card ul {
+            padding-right: 14px;
+            margin-top: 4px;
+        }
+        .card li {
+            margin-bottom: 3px;
+        }
+
+        /* Comparison Table */
+        table.comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            margin-bottom: 12px;
+            font-size: 8pt;
+        }
+        table.comparison-table th, table.comparison-table td {
+            border: 1px solid #cbd5e1;
+            padding: 6px 9px;
+            text-align: right;
+        }
+        table.comparison-table th {
+            background: #1e1b4b;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 8.2pt;
+        }
+        table.comparison-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        table.comparison-table tr:hover {
+            background: #f1f5f9;
+        }
+        .badge-green {
+            background: #dcfce7;
+            color: #166534;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 7.5pt;
+            display: inline-block;
+        }
+        .badge-blue {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 7.5pt;
+            display: inline-block;
+        }
+
+        .callout-box {
+            background: #f0fdf4;
+            border-right: 4px solid #16a34a;
+            border-top: 1px solid #bbf7d0;
+            border-bottom: 1px solid #bbf7d0;
+            border-left: 1px solid #bbf7d0;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-top: 10px;
+            margin-bottom: 8px;
+            font-size: 8.2pt;
+            color: #14532d;
+            line-height: 1.45;
+        }
+        
+        .footer-note {
+            text-align: center;
+            font-size: 7.5pt;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
+            margin-top: 14px;
+        }
+        .latin {
+            direction: ltr;
+            display: inline-block;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ==================== PAGE 1 ==================== -->
+    <div class="header-cover">
+        <div class="badge-cover">عرض فني وحل مؤسسي متكامل &bull; Enterprise IT Solution</div>
+        <h1 class="cover-title">نظام إدارة الدعم الفني وتذاكر الـ IT عبر تليجرام</h1>
+        <p class="cover-subtitle">
+            منظومة مؤسسية ذكية لإدارة طلبات الدعم التقني عبر بوت تليجرام تفاعلي ولوحة تحكم مركزية لحظية للمهندسين، مع تتبع دقيق لاتفاقيات مستوى الخدمة (SLA) واستبيانات رضا الموظفين (CSAT).
+        </p>
+        <div class="cover-meta">
+            <span>الجهة المطورة: <strong>فريق هندسة النظم والدعم الفني</strong></span>
+            <span>بيئة التشغيل: <strong>On-Premises Windows Server / Cloud VPS</strong></span>
+            <span>تاريخ الإصدار: <strong>أكتوبر 2026 (v2.0)</strong></span>
+        </div>
+    </div>
+
+    <h2 class="section-title">1. الملخص التنفيذي وحل المشكلة المؤسسية (Executive Summary)</h2>
+    <div class="grid-2">
+        <div class="card">
+            <h3>⚠️ التحديات التقليدية السابقة</h3>
+            <ul>
+                <li><strong>عشوائية الرسائل:</strong> استقبال طلبات الدعم عبر واتساب أو الاتصالات يسبب ضياع البلاغات وتكرار الشكاوى دون توثيق.</li>
+                <li><strong>غياب قياس الأداء:</strong> عدم معرفة وقت الاستجابة، وحجم إنجاز كل مهندس، وتأخر بلاغات الأعطال الحرجة.</li>
+                <li><strong>تكلفة البرامج السحابية الباهظة:</strong> رسوم باهظة شهرياً لكل فني على المنصات العالمية مثل Jira أو Zendesk.</li>
+                <li><strong>صعوبة الاستخدام للموظفين:</strong> نفور الموظفين من إنشاء حسابات وتذكر كلمات سر في بوابات الويب المعقدة.</li>
+            </ul>
+        </div>
+        <div class="card highlight">
+            <h3>✅ ما يقدمه نظام Helpdesk الذكي</h3>
+            <ul>
+                <li><strong>سهولة مطلقة للموظف:</strong> يرسل الموظف مشكلته وصور العطل فوراً من تطبيق تليجرام المتوفر على هاتفه وجهازه.</li>
+                <li><strong>لوحة تحكم مركزية لحظية:</strong> شاشة تحكم موحدة لمهندسي الـ IT بتحديثات فورية (WebSockets) دون الحاجة لعمل Refresh.</li>
+                <li><strong>محرك SLA ذكي وديناميكي:</strong> تنبيهات تلقائية قبل اختراق وقت الاستجابة، وإيقاف مؤقت للعداد عند انتظار رد العميل.</li>
+                <li><strong>ملكية كاملة بدون اشتراكات:</strong> يعمل على خوادم الشركة المحلية أو سيرفر سحابي اقتصادي مع خصوصية كاملة لبياناتك.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 class="section-title">2. أبرز المزايا والقدرات التقنية للنظام (Key Capabilities)</h2>
+    <div class="grid-3">
+        <div class="card">
+            <h4>⚡ إدارة تذاكر فورية (Real-Time)</h4>
+            <p>توليد أرقام تسلسلية لكل تذكرة (<span class="latin">TK-1001</span>) مع إشعار صوتي فوري وتحديث حي للرسائل والصور المرفقة عبر <span class="latin">WebSockets</span>.</p>
+        </div>
+        <div class="card">
+            <h4>⏸️ دورة حياة SLA الذكية</h4>
+            <p>يتوقف عداد الـ <span class="latin">SLA</span> مؤقتاً عند رد موظف الـ IT على العميل، ويستأنف تلقائياً مع تمديد الـ <span class="latin">Deadline</span> بنفس مدة انتظار رد المستخدم.</p>
+        </div>
+        <div class="card">
+            <h4>🌟 استبيان رضا العملاء (CSAT)</h4>
+            <p>عند إغلاق التذكرة، يرسل البوت تلقائياً استبياناً تفاعلياً من 1 إلى 5 نجوم مع حساب معدل رضا الموظفين وإحصائيات دقيقة في الداشبورد.</p>
+        </div>
+        <div class="card">
+            <h4>✔️ إغلاق بنقرة واحدة (1-Click Close)</h4>
+            <p>زر إغلاق فوري يعين التذكرة تلقائياً ويرسل إشعار الحل الرسمي واستبيان الرضا للموظف على تليجرام ويقفل التذكرة بنقرة واحدة.</p>
+        </div>
+        <div class="card">
+            <h4>🤖 قاعدة معرفة وردود جاهزة</h4>
+            <p>ردود جاهزة بالإنجليزية (<span class="latin">Canned Responses</span>) للمهام الشائعة (AnyDesk، كابل الشبكة، ريستارت) وبوت رد ذاتي بالذكاء الاصطناعي للـ FAQ.</p>
+        </div>
+        <div class="card">
+            <h4>🔒 خصوصية ومحادثات خاصة</h4>
+            <p>ردود موظفي الـ IT تصل للمستخدم بشكل خاص وسري دون إزعاج جروبات العمل، مع إمكانية إضافة ملاحظات داخلية سرية للفريق فقط (<span class="latin">Internal Notes</span>).</p>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 2 ==================== -->
+    <div class="page-break"></div>
+
+    <h2 class="section-title">3. المعمارية التقنية وتدفق العمليات (Architecture &amp; Workflow)</h2>
+    <p>يعتمد النظام على هيكلية معمارية حديثة تجمع بين واجهات الويب اللحظية وبوت تليجرام عبر محرك <span class="latin">FastAPI &amp; Asyncio</span> عالي السرعة:</p>
+    
+    <div class="grid-2" style="margin-top: 8px;">
+        <div class="card">
+            <h3>🔄 خطوات دورة حياة التذكرة (Workflow)</h3>
+            <ul>
+                <li><strong>1. فتح البلاغ:</strong> يرسل الموظف رسالة أو صورة عطل للبوت &larr; يتم تسجيل التذكرة وتحديد الأولوية وعداد الـ SLA فوراً.</li>
+                <li><strong>2. التنبيه والاستلام:</strong> يصل إشعار فوري لجروب مهندسي الـ IT على تليجرام وتظهر التذكرة في لوحة التحكم مع نغمة تنبيه.</li>
+                <li><strong>3. المعالجة والرد:</strong> يرد المهندس من لوحة التحكم &larr; تصل الرسالة للموظف في شات خاص ويتوقف عداد الـ SLA مؤقتاً.</li>
+                <li><strong>4. الإغلاق والتقييم:</strong> ينقر المهندس <span class="latin">[Close Ticket]</span> &larr; يتم إغلاق التذكرة فوراً وإرسال استبيان تقييم الخدمة بالنجوم.</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3>⚙️ المكونات التقنية للنظام (Tech Stack)</h3>
+            <ul>
+                <li><strong>محرك الباك إند:</strong> مبني بلغة <span class="latin">Python 3.12</span> مع أطر <span class="latin">FastAPI &amp; Uvicorn</span> فائقة السرعة والاستقرار.</li>
+                <li><strong>قاعدة البيانات:</strong> <span class="latin">SQLite</span> مع تفعيل وضع <span class="latin">WAL (Write-Ahead Logging)</span> لتحمل آلاف العمليات المتزامنة بدون صيانة.</li>
+                <li><strong>واجهة المستخدم:</strong> تصميم حديث وسلس بتقنية <span class="latin">TailwindCSS</span> مع اتصالات حية عبر <span class="latin">WebSockets</span> ثنائية الاتجاه.</li>
+                <li><strong>التكامل الخارجي:</strong> ربط رسمي ومباشر مع <span class="latin">Telegram Bot API (HTTPS/SSL)</span>.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 class="section-title">4. خيارات النشر والمقارنة بين السيرفر الداخلي والسحابي (Deployment Models)</h2>
+    <p>تم تصميم النظام بمرونة استثنائية ليعمل إما <strong>محلياً على سيرفر داخل الشركة (On-Premises)</strong> أو <strong>مستضافاً سحابياً على الإنترنت (Cloud VPS)</strong>:</p>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th style="width: 22%;">عنصر المقارنة</th>
+                <th style="width: 39%;">الخيار الأول: سيرفر محلي داخل الشركة (On-Premises)</th>
+                <th style="width: 39%;">الخيار الثاني: استضافة سحابية أونلاين (Cloud VPS)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>بيئة التشغيل</strong></td>
+                <td>جهاز كمبيوتر عادي أو سيرفر ويندوز <span class="latin">(Windows 10/11 / Windows Server)</span></td>
+                <td>سيرفر سحابي افتراضي يعمل بنظام لينكس <span class="latin">(Ubuntu 22.04 LTS / Docker)</span></td>
+            </tr>
+            <tr>
+                <td><strong>تكلفة الاستضافة الشهرية</strong></td>
+                <td><span class="badge-green">0 دولار / شهرياً (مجاناً تماماً)</span><br>تعتمد على أجهزة وكهرباء الشركة المتوفرة حالياً</td>
+                <td><span class="badge-blue">حوالي 4 إلى 6 دولار / شهرياً فقط</span><br>(مثل مزودي Hetzner CX22 أو DigitalOcean أو Contabo)</td>
+            </tr>
+            <tr>
+                <td><strong>طريقة التثبيت</strong></td>
+                <td>برنامج تثبيت مستقل بنقرة واحدة <span class="latin">(ITSupportHelpdesk_Setup.exe)</span> يعمل كخدمة صامتة في الخلفية بدون شاشات سوداء</td>
+                <td>نشر حاويات بأمر واحد عبر <span class="latin">Docker Compose (docker compose up -d)</span> مع تشغيل مستمر 24/7</td>
+            </tr>
+            <tr>
+                <td><strong>الاعتمادية والتشغيل</strong></td>
+                <td>يعتمد على استمرار تشغيل جهاز السيرفر وتوفر الكهرباء والإنترنت في مقر الشركة</td>
+                <td><span class="badge-green">مستمر 24 ساعة دون انقطاع (99.9% Uptime)</span> في مراكز بيانات عالمية محمية</td>
+            </tr>
+            <tr>
+                <td><strong>أمان وسرية البيانات</strong></td>
+                <td>البيانات محفوظة بالكامل داخل المقر الفيزيائي للشركة بنسبة 100%</td>
+                <td>بيانات مشفرة على خادمك السحابي الخاص مع إمكانية عمل نسخ احتياطي آلي</td>
+            </tr>
+            <tr>
+                <td><strong>الوصول للداشبورد</strong></td>
+                <td>متاح لمهندسي الـ IT من أي جهاز داخل شبكة الشركة المحلية <span class="latin">(LAN / Wi-Fi)</span></td>
+                <td>متاح لمهندسي الـ IT من أي مكان في العالم عبر المتصفح برابط محمي</td>
+            </tr>
+            <tr>
+                <td><strong>الأنسب لمن؟</strong></td>
+                <td>الشركات التي تفضل عدم دفع أي مصاريف شهرية وتمتلك سيرفر يعمل باستمرار في مقرها</td>
+                <td>الشركات التي لديها فروع متعددة أو فرق عمل عن بُعد وتبحث عن استقرار كامل 24/7</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="callout-box">
+        <strong>💡 توصية الخبراء لاختيار بيئة الاستضافة:</strong>
+        كلا الخيارين يعملان بنفس الكفاءة وقوة الأداء. إذا كانت الشركة تمتلك جهاز سيرفر أو حاسوباً مخصصاً يظل متصلاً بالإنترنت داخل المكتب، فإن <strong>خيار السيرفر المحلي (On-Premises)</strong> يوفر تشغيلاً مجانياً 100% دون أي تكاليف شهرية. أما إذا كانت الشركة ترغب في راحة البال من مشاكل انقطاع الكهرباء أو إنترنت المكتب، فإن <strong>خيار الاستضافة السحابية (Cloud VPS)</strong> بتكلفة رمزية (~4$ إلى 6$ شهرياً) يضمن عملاً متواصلاً بدون أي انقطاع.
+    </div>
+
+    <!-- ==================== PAGE 3 ==================== -->
+    <div class="page-break"></div>
+
+    <h2 class="section-title">5. متطلبات التشغيل والمواصفات الفنية (Technical Requirements)</h2>
+    <div class="grid-2">
+        <div class="card">
+            <h3>🖥️ متطلبات السيرفر المحلي (On-Premises)</h3>
+            <ul>
+                <li><strong>نظام التشغيل:</strong> Windows 10, 11 أو Windows Server (2016 / 2019 / 2022 / 2025).</li>
+                <li><strong>المعالج والذاكرة:</strong> معالج ثنائي النواة كحد أدنى، ذاكرة عشوائية 2 جيجابايت RAM (يوصى بـ 4GB).</li>
+                <li><strong>المساحة التخزينية:</strong> 200 ميجابايت كحد أقصى للبرنامج وقاعدة البيانات.</li>
+                <li><strong>الاتصال:</strong> اتصال إنترنت مستمر للوصول إلى سيرفرات <span class="latin">api.telegram.org:443</span>.</li>
+                <li><strong>المتطلبات المسبقة:</strong> <strong>صفر متطلبات</strong> — البرنامج مجمع ومكتفٍ ذاتياً ولا يحتاج تثبيت Python أو أي أدوات خارجية.</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3>☁️ متطلبات السيرفر السحابي (Cloud VPS)</h3>
+            <ul>
+                <li><strong>نظام التشغيل:</strong> سيرفر افتراضي بنظام Ubuntu 22.04 LTS أو 24.04 LTS.</li>
+                <li><strong>المواصفات الدنيا:</strong> 1 vCPU و 1 GB RAM (كافية تماماً لإدارة عشرات الآلاف من التذاكر شهرياً).</li>
+                <li><strong>أدوات التشغيل:</strong> تثبيت محرك <span class="latin">Docker &amp; Docker Compose</span>.</li>
+                <li><strong>المنافذ والشبكة:</strong> فتح المنفذ <span class="latin">8080</span> أو ربط دومين خاص مجاني مع شهادة <span class="latin">SSL (Let's Encrypt)</span>.</li>
+                <li><strong>التكلفة التقديرية:</strong> 4$ - 6$ شهرياً تدفع مباشرة لمزود الاستضافة المختار.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 class="section-title">6. محرك الـ SLA وجودة الخدمة (SLA &amp; Performance Engine)</h2>
+    <div class="grid-3">
+        <div class="card">
+            <h4>🚨 مستويات الأولوية والمهل</h4>
+            <p><strong>حرجة (Critical):</strong> استجابة خلال ساعتين.<br><strong>عالية (High):</strong> استجابة خلال 4 ساعات.<br><strong>متوسطة (Medium):</strong> استجابة خلال 24 ساعة.<br><strong>منخفضة (Low):</strong> استجابة خلال 48 ساعة.</p>
+        </div>
+        <div class="card">
+            <h4>⏸️ نظام التجميد العادل للـ SLA</h4>
+            <p>يتم تجميد العداد بمجرد رد الفني لتجنب احتساب أوقات تأخر الموظف على تقييم كفاءة الـ IT، مع استئناف فوري وتمديد المهلة عند استلام رد الموظف.</p>
+        </div>
+        <div class="card">
+            <h4>🔔 تنبيهات مبكرة استباقية</h4>
+            <p>إشعارات تلقائية تحذيرية قبل 30 دقيقة من انتهاء مهلة التذكرة في جروب مهندسي الدعم، ورسائل عاجلة فورية في حال حدوث أي تجاوز لمهلة الحل.</p>
+        </div>
+    </div>
+
+    <h2 class="section-title">7. الأمان والموثوقية وحماية البيانات (Security &amp; Reliability)</h2>
+    <div class="grid-2">
+        <div class="card">
+            <h4>🛡️ حماية وخصوصية تامة</h4>
+            <p>كل موظف يرى تذاكره الخاصة فقط، ولا يمكن لأي موظف الاطلاع على تذاكر الآخرين. المحادثات والردود والملفات المرفقة مشفرة في النقل عبر بروتوكولات <span class="latin">TLS 1.3</span> المعتمدة من تليجرام.</p>
+        </div>
+        <div class="card">
+            <h4>📦 سهولة النسخ الاحتياطي والصيانة</h4>
+            <p>تعتمد المنظومة على قاعدة بيانات <span class="latin">SQLite WAL</span> في ملف واحد محمي؛ مما يجعل عملية أخذ نسخة احتياطية (<span class="latin">Backup</span>) أو النقل بين السيرفرات في ثوانٍ معدودة دون تعقيدات قواعد البيانات الضخمة.</p>
+        </div>
+    </div>
+
+    <h2 class="section-title">8. خطوات التعاقد والبدء التجريبي (Next Steps)</h2>
+    <div class="callout-box">
+        <strong>📋 عروض الأسعار والتنفيذ المخصص:</strong><br>
+        يتم تحديد التكلفة وعروض الأسعار وحزم التدريب والدعم الفني بما يتناسب مع حجم المؤسسة وعدد الموظفين وطبيعة بيئة التشغيل المختارة (سيرفر داخلي أو استضافة سحابية).
+        <br><br>
+        <strong>الخطوة التالية الموصى بها:</strong> تحديد موعد لجلسة استعراض حي وتفاعلي للنظام لمدة 15 دقيقة لتجربة إرسال واستقبال التذاكر عملياً والاطلاع على لوحة التحكم، وتقديم العرض الفني والمالي النهائي.
+    </div>
+
+    <div class="footer-note">
+        نظام إدارة الدعم الفني وتذاكر الـ IT عبر تليجرام &bull; عرض فني وتجاري خاص &bull; إصدار أكتوبر 2026
+    </div>
+
+</body>
+</html>
