@@ -417,17 +417,22 @@ async def reply_to_ticket(ticket_id: int, payload: ReplyPayload, user: str = Dep
         update_ticket_status(ticket_id, "in_progress")
         ticket["status"] = "in_progress"
 
+    refreshed_ticket = get_ticket_details(ticket_id)
+
     # Broadcast event to all open tabs
     await manager.broadcast({
         "type": "new_message",
         "ticket_id": ticket_id,
         "message": msg,
-        "ticket_status": ticket["status"]
+        "ticket_status": refreshed_ticket["status"] if refreshed_ticket else ticket["status"],
+        "first_response_at": refreshed_ticket.get("first_response_at") if refreshed_ticket else None,
+        "ticket": refreshed_ticket
     })
     
     return {
         "ok": True, 
         "message": msg, 
+        "ticket": refreshed_ticket,
         "delivered": delivery_res.get("delivered", True),
         "reason": delivery_res.get("reason", "")
     }

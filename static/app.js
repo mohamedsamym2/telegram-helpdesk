@@ -448,6 +448,16 @@ function getSlaInfo(ticket) {
         };
     }
 
+    // When IT sends a message/reply to user, SLA stops immediately!
+    if (ticket.first_response_at) {
+        return {
+            text: 'SLA Stopped (IT Responded)',
+            badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold',
+            isBreached: false,
+            isStopped: true
+        };
+    }
+
     if (!ticket.sla_deadline) {
         return {
             text: 'No SLA',
@@ -802,9 +812,13 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
 
             statusContainer.innerHTML = `
                 ${progressBtn}
-                <button onclick="handleOpenResolveModal()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95 whitespace-nowrap">
+                <button onclick="directCloseTicket()" id="btn-direct-close" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition active:scale-95 whitespace-nowrap" title="Close ticket immediately with 1 click">
                     <i class="fa-solid fa-circle-check"></i>
-                    <span>Resolve & Close</span>
+                    <span>Close Ticket</span>
+                </button>
+                <button onclick="handleOpenResolveModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center gap-1 transition whitespace-nowrap" title="Close with a custom explanation note">
+                    <i class="fa-solid fa-comment-dots text-emerald-400"></i>
+                    <span>Note...</span>
                 </button>
             `;
             replyForm.classList.remove('hidden');
@@ -1104,7 +1118,7 @@ async function sendReply(e) {
 async function changeStatus(newStatus) {
     if (!currentTicketId) return;
     if (newStatus === 'resolved' || newStatus === 'closed') {
-        handleOpenResolveModal();
+        await directCloseTicket();
         return;
     }
     try {
@@ -1123,6 +1137,36 @@ async function changeStatus(newStatus) {
         }
     } catch (e) {
         console.error('Error changing status', e);
+    }
+}
+
+// 1-Click Direct Close Ticket
+async function directCloseTicket() {
+    if (!currentTicketId) return;
+    const btn = document.getElementById('btn-direct-close');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i> <span>Closing...</span>';
+    }
+    try {
+        const res = await fetch(`/api/tickets/${currentTicketId}/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolution_reply: 'The issue has been resolved. Thank you for contacting IT Support.' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            await loadTicketDetails(currentTicketId, false);
+            loadTickets();
+            checkBotStatus();
+        } else {
+            const errDetail = typeof data.detail === 'string' ? data.detail : (Array.isArray(data.detail) ? data.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : JSON.stringify(data.detail || 'Unknown error'));
+            alert('Failed to close ticket: ' + errDetail);
+        }
+    } catch (e) {
+        alert('Server communication error');
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 

@@ -729,7 +729,9 @@ def get_tickets_for_sla_check() -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM tickets 
-        WHERE status IN ('open', 'in_progress') AND sla_deadline IS NOT NULL
+        WHERE status IN ('open', 'in_progress') 
+          AND sla_deadline IS NOT NULL 
+          AND (first_response_at IS NULL OR first_response_at = '')
     """)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
