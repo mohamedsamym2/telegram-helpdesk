@@ -10,7 +10,7 @@ from database import (
     create_ticket, update_ticket_phone, add_message, update_ticket_status,
     get_ticket_details, update_ticket_last_message_id,
     save_user_profile, get_user_profile, get_latest_phone_for_user,
-    save_ticket_rating
+    save_ticket_rating, assign_ticket, match_faq, increment_faq_helpful, get_faq
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -59,6 +59,23 @@ def extract_phone_number(raw_text: str) -> Optional[str]:
 
     return None
 
+def detect_ticket_category(text: str) -> str:
+    """Auto-detects IT ticket category from user text keywords."""
+    lower = (text or "").lower()
+    if any(k in lower for k in ["طابعة", "طابعه", "برنتر", "printer", "طباعة", "حبر", "toner"]):
+        return "Printers"
+    if any(k in lower for k in ["نت", "انترنت", "واي فاي", "وايفاي", "wifi", "شبكة", "راوتر", "سويتش", "ip", "dns", "network"]):
+        return "Network"
+    if any(k in lower for k in ["ايميل", "بريد", "إيميل", "email", "outlook", "باسورد", "كلمة سر", "password", "حساب", "account"]):
+        return "Email & Accounts"
+    if any(k in lower for k in ["برنامج", "سيستم", "system", "software", "anydesk", "ويندوز", "windows", "office", "اوفيس", "excel"]):
+        return "Software"
+    if any(k in lower for k in ["شاشة", "كيبورد", "ماوس", "رام", "هارد", "جهاز", "كيسة", "hardware", "screen", "laptop", "كمبيوتر"]):
+        return "Hardware"
+    if any(k in lower for k in ["erp", "قاعدة بيانات", "سيرفر", "database", "sql", "sap"]):
+        return "ERP / Database"
+    return "General"
+
 class TelegramBot:
     def __init__(self, broadcast_callback: Optional[Callable[[Dict[str, Any]], Any]] = None):
         self.broadcast = broadcast_callback
@@ -67,6 +84,7 @@ class TelegramBot:
         self.token = ""
         self.bot_info: Dict[str, Any] = {}
         self.client: Optional[httpx.AsyncClient] = None
+        self.pending_faq_messages: Dict[int, Dict[str, Any]] = {}
 
     def get_token(self) -> str:
         token = get_setting("telegram_bot_token", "")
@@ -77,6 +95,107 @@ class TelegramBot:
     def set_token(self, token: str):
         self.token = token.strip()
         set_setting("telegram_bot_token", self.token)
+
+    def get_it_alert_group_id(self) -> str:
+        gid = get_setting("it_alert_group_id", "")
+        if not gid:
+            gid = os.getenv("IT_ALERT_GROUP_ID", "").strip()
+        return gid.strip()
+
+    def set_it_alert_group_id(self, group_id: str):
+        set_setting("it_alert_group_id", group_id.strip())
+
+    async def notify_it_team_new_ticket(self, ticket: Dict[str, Any]):
+        group_id = self.get_it_alert_group_id()
+        if not group_id:
+            return
+            
+        ticket_num = ticket.get("ticket_number", f"TK-{ticket['id']}")
+        user_name = ticket.get("user_name", "User")
+        username_str = f"@{ticket['username']}" if ticket.get("username") else "بدون يوزرنيم"
+        phone = ticket.get("phone_number") or "غير مسجل"
+        category = ticket.get("category", "General")
+        priority = (ticket.get("priority") or "medium").upper()
+        subject = ticket.get("subject", "لا يوجد وصف")
+        sla_deadline = ticket.get("sla_deadline", "غير محدد")
+        
+        priority_emojis = {
+            "CRITICAL": "🔴 حرج (2h)",
+            "HIGH": "🟠 عالي (6h)",
+            "MEDIUM": "🟡 متوسط (24h)",
+            "LOW": "🟢 منخفض (48h)"
+        }
+        prio_display = priority_emojis.get(priority, f"🟡 {priority}")
+
+        alert_text = (
+            f"🚨 <b>تذكرة دعم فني جديدة #{ticket_num}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>المرسل:</b> {html.escape(user_name)} ({username_str})\n"
+            f"📱 <b>الهاتف:</b> <code>{phone}</code>\n"
+            f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
+            f"⚡ <b>الأولوية:</b> {prio_display}\n"
+            f"📝 <b>المشكلة:</b> {html.escape(subject)}\n"
+            f"⏱️ <b>موعد الحل الأقصى (SLA):</b> <code>{sla_deadline}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👇 <i>اضغط على الزر بالأسفل لاستلام التذكرة وبدء العمل:</i>"
+        )
+        
+        claim_keyboard = {
+            "inline_keyboard": [
+                [{"text": "🙋‍♂️ استلام التذكرة (Claim Ticket)", "callback_data": f"claim:{ticket['id']}"}]
+            ]
+        }
+        try:
+            chat_id_int = int(group_id)
+            await self.send_message(chat_id_int, alert_text, reply_markup=claim_keyboard)
+        except Exception as e:
+            logger.error(f"Failed to send ticket alert to IT group {group_id}: {e}")
+
+    async def send_sla_alert(self, ticket: Dict[str, Any], alert_type: str, remaining_mins: Optional[float] = None) -> bool:
+        group_id = self.get_it_alert_group_id()
+        if not group_id:
+            return False
+            
+        ticket_num = ticket.get("ticket_number", f"TK-{ticket['id']}")
+        user_name = ticket.get("user_name", "User")
+        priority = (ticket.get("priority") or "medium").upper()
+        category = ticket.get("category", "General")
+        assigned = ticket.get("assigned_to") or "غير مسند (Unassigned)"
+        
+        if alert_type == "warning":
+            mins_val = int(remaining_mins or 0)
+            text = (
+                f"⚠️ <b>تحذير اقتراب كسر مهلة الـ SLA!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"🎫 <b>التذكرة:</b> #{ticket_num}\n"
+                f"👤 <b>المرسل:</b> {html.escape(user_name)}\n"
+                f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
+                f"⚡ <b>الأولوية:</b> {priority}\n"
+                f"⏳ <b>الوقت المتبقي:</b> <b>{mins_val} دقيقة فقط!</b>\n"
+                f"👨‍💻 <b>المسند إليه:</b> {html.escape(assigned)}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"يرجى سرعة متابعة التذكرة قبل كسر وقت الاستجابة المحدد."
+            )
+        else: # breached
+            deadline = ticket.get("sla_deadline", "غير محدد")
+            text = (
+                f"🚨 <b>تنبيه عاجل: تم كسر مهلة الـ SLA!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"🎫 <b>التذكرة:</b> #{ticket_num}\n"
+                f"👤 <b>المرسل:</b> {html.escape(user_name)}\n"
+                f"🏷️ <b>التصنيف:</b> {html.escape(category)}\n"
+                f"⚡ <b>الأولوية:</b> {priority}\n"
+                f"⏰ <b>الموعد المحدد كان:</b> <code>{deadline}</code>\n"
+                f"👨‍💻 <b>المسند إليه:</b> {html.escape(assigned)}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ تجاوزت هذه التذكرة الحد الزمني الأقصى! يرجى التدخل الفوري."
+            )
+        try:
+            chat_id_int = int(group_id)
+            return await self.send_message(chat_id_int, text)
+        except Exception as e:
+            logger.error(f"Failed to send SLA alert to group {group_id}: {e}")
+            return False
 
     async def verify_token(self, token: Optional[str] = None) -> Dict[str, Any]:
         tok = token or self.get_token()
@@ -487,7 +606,47 @@ class TelegramBot:
                     "message": msg_record
                 })
         else:
-            # Create NEW Ticket
+            # 5. Check Knowledge Base / FAQ match before opening a new ticket in private chat
+            matched_faq = match_faq(text) if (not is_group and not text.startswith("/")) else None
+            if matched_faq:
+                # Store pending info
+                self.pending_faq_messages[user_id] = {
+                    "text": text,
+                    "msg_id": msg_id,
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                    "full_name": full_name,
+                    "username": username,
+                    "extracted_phone": extracted_phone,
+                    "media_type": media_type,
+                    "media_url": media_url,
+                    "chat_type": chat_type,
+                    "chat_title": chat_title
+                }
+                
+                faq_text = (
+                    f"💡 <b>اقتراح حل فوري: {html.escape(matched_faq['question'])}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{html.escape(matched_faq['answer'])}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"❓ <b>هل ساعدك هذا الحل في حل مشكلتك؟</b>"
+                )
+                faq_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ نعم، حلت المشكلة!", "callback_data": f"faq_solved:{matched_faq['id']}"},
+                            {"text": "🎫 فتح تذكرة مع فني", "callback_data": f"faq_open:{matched_faq['id']}"}
+                        ]
+                    ]
+                }
+                await self.send_message(chat_id, faq_text, reply_markup=faq_keyboard, reply_to_message_id=msg_id)
+                return
+
+            # Clear pending FAQ message if user sent another regular message
+            self.pending_faq_messages.pop(user_id, None)
+
+            # Create NEW Ticket with auto-detected category
+            category = detect_ticket_category(text)
             subject = (text[:60] + "...") if len(text) > 60 else text
             new_ticket = create_ticket(
                 telegram_chat_id=chat_id,
@@ -498,7 +657,8 @@ class TelegramBot:
                 chat_type=chat_type,
                 chat_title=chat_title,
                 subject=subject,
-                last_message_id=msg_id
+                last_message_id=msg_id,
+                category=category
             )
             
             msg_record = add_message(
@@ -520,6 +680,7 @@ class TelegramBot:
                 phone_note = f"\n📱 <i>رقم الهاتف: {phone_saved}</i>" if phone_saved else "\n📲 <i>يرجى إرسال رقم هاتفك للتواصل ومتابعة المشكلة.</i>"
                 confirm_msg = (
                     f"🎫 <b>تم فتح تذكرة جديدة #{new_ticket['ticket_number']}</b> لـ {user_mention}!\n"
+                    f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
                     f"فريق الدعم الفني سيتواصل معك عبر المحادثة الخاصة.{phone_note}\n\n"
                     f"👇 <i>يرجى فتح المحادثة الخاصة مع البوت لتسجيل رقم هاتفك واستلام الرد:</i>"
                 )
@@ -542,6 +703,7 @@ class TelegramBot:
                     confirm_msg = (
                         f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
                         f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n"
+                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
                         f"📱 رقم الهاتف المسجل: <code>{phone_saved}</code>\n\n"
                         f"فريق الدعم الفني يعمل على طلبك وسيقوم بالرد عليك هنا قريباً."
                     )
@@ -549,13 +711,17 @@ class TelegramBot:
                 else:
                     confirm_msg = (
                         f"أهلاً بك {html.escape(first_name)}! 👋\n\n"
-                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n\n"
+                        f"🎫 تم فتح التذكرة رقم <b>#{new_ticket['ticket_number']}</b> بنجاح لمتابعة مشكلتك.\n"
+                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n\n"
                         f"📲 <b>يرجى تزويدنا برقم هاتفك للتواصل وحل المشكلة سريعاً:</b>\n"
                         f"👇 اضغط على الزر بالأسفل لمشاركة رقم هاتفك، أو اكتبه هنا في رسالة:"
                     )
                     markup = reply_keyboard
                 await self.send_message(chat_id, confirm_msg, reply_markup=markup, reply_to_message_id=msg_id)
             
+            # Send alert to IT team group with Claim Ticket button!
+            await self.notify_it_team_new_ticket(new_ticket)
+
             if self.broadcast:
                 ticket_full = get_ticket_details(new_ticket["id"])
                 await self.broadcast({
@@ -627,6 +793,180 @@ class TelegramBot:
                         })
                 except Exception as e:
                     logger.error(f"Error handling rating callback query: {e}", exc_info=True)
+
+        elif data.startswith("claim:"):
+            # format: claim:{ticket_id}
+            parts = data.split(":")
+            if len(parts) == 2:
+                try:
+                    ticket_id = int(parts[1])
+                    t = get_ticket_details(ticket_id)
+                    if not t:
+                        await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
+                            "callback_query_id": cb_id,
+                            "text": "⚠️ هذه التذكرة غير موجودة!",
+                            "show_alert": True
+                        })
+                        return
+
+                    if t.get("assigned_to"):
+                        await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
+                            "callback_query_id": cb_id,
+                            "text": f"⚠️ هذه التذكرة مستلمة بالفعل بواسطة: {t['assigned_to']}",
+                            "show_alert": True
+                        })
+                        return
+
+                    # Resolve technician name
+                    first_name = from_user.get("first_name", "")
+                    last_name = from_user.get("last_name", "")
+                    staff_name = f"{first_name} {last_name}".strip()
+                    if not staff_name:
+                        staff_name = f"@{from_user.get('username', 'Technician')}"
+                    staff_name = staff_name.strip()
+
+                    # Assign ticket and set in_progress
+                    updated = assign_ticket(ticket_id, staff_name)
+                    update_ticket_status(ticket_id, "in_progress")
+                    
+                    # Answer callback
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
+                        "callback_query_id": cb_id,
+                        "text": f"✅ تم استلام التذكرة #{t['ticket_number']} بنجاح!",
+                        "show_alert": False
+                    })
+
+                    # Edit group message to show claimed state and remove button
+                    orig_text = msg.get("text", "")
+                    new_text = orig_text + f"\n\n✅ <b>تم استلام التذكرة بواسطة:</b> {html.escape(staff_name)} (قيد العمل ⚙️)"
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": new_text,
+                        "parse_mode": "HTML"
+                    })
+
+                    # Add system audit log
+                    add_message(
+                        ticket_id=ticket_id,
+                        sender_type="agent",
+                        sender_name=staff_name,
+                        text=f"🙋‍♂️ تم استلام التذكرة من تيليجرام بواسطة: {staff_name}"
+                    )
+
+                    # Broadcast to dashboard
+                    if self.broadcast:
+                        await self.broadcast({
+                            "type": "ticket_assigned",
+                            "ticket_id": ticket_id,
+                            "assigned_to": staff_name,
+                            "ticket": get_ticket_details(ticket_id)
+                        })
+                        await self.broadcast({
+                            "type": "status_changed",
+                            "ticket_id": ticket_id,
+                            "status": "in_progress"
+                        })
+                except Exception as e:
+                    logger.error(f"Error handling claim callback query: {e}", exc_info=True)
+
+        elif data.startswith("faq_solved:"):
+            # format: faq_solved:{faq_id}
+            parts = data.split(":")
+            if len(parts) == 2:
+                try:
+                    faq_id = int(parts[1])
+                    increment_faq_helpful(faq_id)
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
+                        "callback_query_id": cb_id,
+                        "text": "سعداء جداً بمساعدتك! 🌟",
+                        "show_alert": False
+                    })
+                    solved_text = (
+                        "✅ <b>سعداء بأن المشكلة تم حلها!</b>\n\n"
+                        "إذا واجهتك أي استفسارات أو مشاكل أخرى في أي وقت، فريق الدعم الفني دائماً في خدمتك. 🙏"
+                    )
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": solved_text,
+                        "parse_mode": "HTML"
+                    })
+                    self.pending_faq_messages.pop(from_user.get("id"), None)
+                except Exception as e:
+                    logger.error(f"Error handling faq_solved callback: {e}", exc_info=True)
+
+        elif data.startswith("faq_open:"):
+            # format: faq_open:{faq_id}
+            parts = data.split(":")
+            if len(parts) == 2:
+                try:
+                    u_id = from_user.get("id")
+                    pending = self.pending_faq_messages.pop(u_id, None)
+                    
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json={
+                        "callback_query_id": cb_id,
+                        "text": "جاري فتح تذكرة دعم فني لك مع الفريق... 🎫",
+                        "show_alert": False
+                    })
+                    
+                    p_text = pending.get("text", "طلب دعم فني") if pending else "طلب دعم فني"
+                    p_msg_id = pending.get("msg_id", message_id) if pending else message_id
+                    p_user_name = pending.get("full_name") if pending else (from_user.get("first_name", "User"))
+                    p_username = pending.get("username") if pending else from_user.get("username", "")
+                    p_phone = pending.get("extracted_phone", "") if pending else ""
+                    p_media_type = pending.get("media_type", "text") if pending else "text"
+                    p_media_url = pending.get("media_url", "") if pending else ""
+                    
+                    category = detect_ticket_category(p_text)
+                    subject = (p_text[:60] + "...") if len(p_text) > 60 else p_text
+                    
+                    new_ticket = create_ticket(
+                        telegram_chat_id=chat_id,
+                        telegram_user_id=u_id,
+                        user_name=p_user_name,
+                        username=p_username,
+                        phone_number=p_phone,
+                        chat_type="private",
+                        chat_title="",
+                        subject=subject,
+                        last_message_id=p_msg_id,
+                        category=category
+                    )
+                    
+                    add_message(
+                        ticket_id=new_ticket["id"],
+                        sender_type="user",
+                        sender_name=p_user_name,
+                        text=p_text,
+                        media_type=p_media_type,
+                        media_url=p_media_url,
+                        telegram_message_id=p_msg_id
+                    )
+                    
+                    open_msg = (
+                        f"🎫 <b>تم فتح التذكرة #{new_ticket['ticket_number']} بنجاح!</b>\n\n"
+                        f"🏷️ التصنيف: <code>{html.escape(category)}</code>\n"
+                        f"فريق الدعم الفني يعمل على طلبك وسيقوم بالرد عليك هنا قريباً."
+                    )
+                    await self.client.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": open_msg,
+                        "parse_mode": "HTML"
+                    })
+                    
+                    # Notify IT team group
+                    await self.notify_it_team_new_ticket(new_ticket)
+                    
+                    if self.broadcast:
+                        ticket_full = get_ticket_details(new_ticket["id"])
+                        await self.broadcast({
+                            "type": "new_ticket",
+                            "ticket": ticket_full
+                        })
+                except Exception as e:
+                    logger.error(f"Error handling faq_open callback: {e}", exc_info=True)
 
     async def _poll_loop(self):
         offset = 0

@@ -5,6 +5,9 @@ let allTickets = [];
 let currentTicketId = null;
 let currentFilter = 'all'; // 'all', 'open', 'in_progress', 'closed'
 let currentQueueFilter = 'all'; // 'all', 'me', 'unassigned'
+let currentCategoryFilter = 'all'; // 'all', 'Network', 'Hardware', etc.
+let slaRiskFilterActive = false;
+let currentReplyMode = 'reply'; // 'reply' or 'note'
 let searchQuery = '';
 let soundEnabled = localStorage.getItem('sound_enabled') !== 'false';
 let socket = null;
@@ -12,6 +15,8 @@ let currentUser = null;
 let cachedUsers = [];
 let activeReportPreset = 'this_month';
 let slaTickTimer = null;
+let cachedCannedResponses = [];
+let cachedFaqs = [];
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -96,6 +101,7 @@ async function handleLogout() {
 function initializeApp() {
     checkBotStatus();
     loadTeamUsers();
+    loadCannedResponses();
     loadTickets();
     connectWebSocket();
 
@@ -241,6 +247,10 @@ function handleWsEvent(event) {
         if (currentTicketId === event.ticket_id) {
             loadTicketDetails(currentTicketId, false);
         }
+    } else if (event.type === 'internal_note') {
+        if (currentTicketId === event.ticket_id) {
+            loadTicketDetails(currentTicketId, false);
+        }
     } else if (event.type === 'status_changed') {
         loadTickets();
         checkBotStatus();
@@ -268,6 +278,18 @@ function handleWsEvent(event) {
         if (currentTicketId === event.ticket_id) {
             loadTicketDetails(currentTicketId, false);
         }
+    } else if (event.type === 'category_changed') {
+        loadTickets();
+        if (currentTicketId === event.ticket_id) {
+            const catSelect = document.getElementById('ticket-category-select');
+            if (catSelect && event.category) catSelect.value = event.category;
+        }
+    } else if (event.type === 'sla_warning' || event.type === 'sla_breached') {
+        playDing();
+        loadTickets();
+        if (currentTicketId === event.ticket_id) {
+            loadTicketDetails(currentTicketId, false);
+        }
     } else if (event.type === 'ticket_rated') {
         playDing();
         loadTickets();
@@ -287,7 +309,17 @@ async function loadTickets() {
             assignedParam = `&assigned=unassigned`;
         }
 
-        const res = await fetch(`/api/tickets?status=${currentFilter}${assignedParam}`);
+        let catParam = '';
+        if (currentCategoryFilter && currentCategoryFilter !== 'all') {
+            catParam = `&category=${encodeURIComponent(currentCategoryFilter)}`;
+        }
+
+        let slaParam = '';
+        if (slaRiskFilterActive) {
+            slaParam = `&sla=risk`;
+        }
+
+        const res = await fetch(`/api/tickets?status=${currentFilter}${assignedParam}${catParam}${slaParam}`);
         if (res.status === 401) {
             document.getElementById('login-overlay').classList.remove('hidden');
             return;
@@ -328,6 +360,7 @@ function updateBadgeCounters(stats) {
     const elClosed = document.getElementById('count-closed');
     const elMine = document.getElementById('count-assigned-me');
     const elUnassigned = document.getElementById('count-unassigned');
+    const elSlaRisk = document.getElementById('count-sla-risk-badge');
 
     if (elTotal) elTotal.textContent = `(${counts.all ?? counts.total ?? 0})`;
     if (elOpen) elOpen.textContent = `(${counts.open ?? 0})`;
@@ -341,6 +374,27 @@ function updateBadgeCounters(stats) {
 
     if (elMine) elMine.textContent = `(${mineCount})`;
     if (elUnassigned) elUnassigned.textContent = `(${unassignedCount})`;
+    if (elSlaRisk) elSlaRisk.textContent = stats.sla_risks ?? 0;
+}
+
+function handleSidebarCategoryFilter(cat) {
+    currentCategoryFilter = cat;
+    loadTickets();
+}
+
+function toggleSlaRiskFilter() {
+    slaRiskFilterActive = !slaRiskFilterActive;
+    const btn = document.getElementById('sla-risk-filter-btn');
+    if (btn) {
+        if (slaRiskFilterActive) {
+            btn.classList.add('bg-rose-600', 'text-white', 'border-rose-500');
+            btn.classList.remove('bg-slate-800/90', 'text-rose-400');
+        } else {
+            btn.classList.remove('bg-rose-600', 'text-white', 'border-rose-500');
+            btn.classList.add('bg-slate-800/90', 'text-rose-400');
+        }
+    }
+    loadTickets();
 }
 
 function setFilter(filter) {
@@ -473,6 +527,44 @@ function getPriorityBadge(prio) {
     }
 }
 
+function getCategoryBadge(cat) {
+    const c = cat || 'General';
+    let icon = 'fa-folder';
+    let colorClass = 'bg-slate-700/60 text-slate-300 border-slate-600';
+
+    switch (c) {
+        case 'Network':
+            icon = 'fa-network-wired';
+            colorClass = 'bg-sky-500/15 text-sky-300 border-sky-500/30';
+            break;
+        case 'Hardware':
+            icon = 'fa-laptop';
+            colorClass = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+            break;
+        case 'Software':
+            icon = 'fa-compact-disc';
+            colorClass = 'bg-purple-500/15 text-purple-300 border-purple-500/30';
+            break;
+        case 'Email & Accounts':
+            icon = 'fa-envelope';
+            colorClass = 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
+            break;
+        case 'Printers':
+            icon = 'fa-print';
+            colorClass = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+            break;
+        case 'ERP / Database':
+            icon = 'fa-database';
+            colorClass = 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+            break;
+        default:
+            icon = 'fa-folder-open';
+            colorClass = 'bg-slate-700/60 text-slate-300 border-slate-600';
+    }
+
+    return `<span class="px-1.5 py-0.5 rounded text-[9px] font-medium border flex items-center gap-1 ${colorClass}"><i class="fa-solid ${icon} text-[8px]"></i>${escapeHtml(c)}</span>`;
+}
+
 // Render ticket list in sidebar
 function renderTicketsList() {
     const container = document.getElementById('tickets-container');
@@ -484,6 +576,7 @@ function renderTicketsList() {
             (t.user_name && t.user_name.toLowerCase().includes(searchQuery)) ||
             (t.phone_number && t.phone_number.includes(searchQuery)) ||
             (t.subject && t.subject.toLowerCase().includes(searchQuery)) ||
+            (t.category && t.category.toLowerCase().includes(searchQuery)) ||
             (t.username && t.username.toLowerCase().includes(searchQuery)) ||
             (t.assigned_to && t.assigned_to.toLowerCase().includes(searchQuery))
         );
@@ -504,6 +597,7 @@ function renderTicketsList() {
         const isActive = t.id === currentTicketId ? 'active' : '';
         const statusBadge = getStatusBadge(t.status);
         const priorityBadge = getPriorityBadge(t.priority || 'medium');
+        const categoryBadge = getCategoryBadge(t.category);
         const sla = getSlaInfo(t);
         const timeAgo = formatTimeAgo(t.updated_at || t.created_at);
         const phone = t.phone_number ? `<span class="text-emerald-400 font-mono text-[10px] flex items-center gap-1"><i class="fa-solid fa-phone text-[9px]"></i>${escapeHtml(t.phone_number)}</span>` : '<span class="text-slate-500 text-[10px]">No phone</span>';
@@ -523,6 +617,7 @@ function renderTicketsList() {
                     <div class="flex items-center gap-1.5 flex-wrap">
                         <span class="font-mono text-xs font-bold text-indigo-400">${escapeHtml(t.ticket_number)}</span>
                         ${priorityBadge}
+                        ${categoryBadge}
                         ${statusBadge}
                         ${ratingPill}
                     </div>
@@ -625,6 +720,12 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
             prioSelect.value = ticket.priority || 'medium';
         }
 
+        // Category Selector
+        const catSelect = document.getElementById('ticket-category-select');
+        if (catSelect) {
+            catSelect.value = ticket.category || 'General';
+        }
+
         // SLA Badge
         renderSlaBadge(ticket);
 
@@ -672,8 +773,10 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
             cannedBar.classList.add('hidden');
             replyLockedNotice.classList.remove('hidden');
             if (prioSelect) prioSelect.disabled = false;
+            if (catSelect) catSelect.disabled = false;
         } else {
             if (prioSelect) prioSelect.disabled = false;
+            if (catSelect) catSelect.disabled = false;
             let progressBtn = '';
             if (ticket.status === 'open') {
                 progressBtn = `
@@ -707,6 +810,21 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
         const messages = ticket.messages || [];
 
         msgContainer.innerHTML = messages.map(m => {
+            const isInternal = m.is_internal || m.sender_type === 'internal_note';
+            if (isInternal) {
+                return `
+                    <div class="flex flex-col items-end ml-auto message-bubble-enter max-w-xl">
+                        <span class="text-[10px] text-amber-400 mb-1 px-1 font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-lock text-[9px]"></i>
+                            Internal Team Note • ${escapeHtml(m.sender_name || 'IT Staff')} • ${formatTime(m.created_at)}
+                        </span>
+                        <div class="bg-amber-950/60 border border-amber-500/40 text-amber-100 p-3.5 rounded-2xl shadow-md text-xs leading-relaxed whitespace-pre-wrap break-words">
+                            ${escapeHtml(m.text)}
+                        </div>
+                    </div>
+                `;
+            }
+
             const isAgent = m.sender_type === 'agent';
             const bubbleBg = isAgent 
                 ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-none' 
@@ -834,7 +952,85 @@ async function handlePriorityChange(newPriority) {
     }
 }
 
-// Send Agent Reply (Sent PRIVATELY to user)
+async function handleCategoryChange(newCategory) {
+    if (!currentTicketId) return;
+    try {
+        const res = await fetch(`/api/tickets/${currentTicketId}/category`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: newCategory })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            const idx = allTickets.findIndex(t => t.id === currentTicketId);
+            if (idx !== -1) allTickets[idx].category = newCategory;
+            renderTicketsList();
+        } else {
+            alert('Failed to update category');
+        }
+    } catch (e) {
+        console.error('Error changing category', e);
+    }
+}
+
+// Mode Switcher: Public Telegram Reply vs Internal Team Note
+function setReplyMode(mode) {
+    currentReplyMode = mode;
+    const btnReply = document.getElementById('mode-reply-btn');
+    const btnNote = document.getElementById('mode-note-btn');
+    const notice = document.getElementById('reply-visibility-notice');
+    const sendBtn = document.getElementById('send-reply-btn');
+    const sendText = document.getElementById('send-reply-btn-text');
+    const sendIcon = document.getElementById('send-reply-btn-icon');
+    const textarea = document.getElementById('reply-text');
+
+    if (mode === 'note') {
+        if (btnNote) {
+            btnNote.className = 'px-3 py-1 rounded-lg font-bold text-[11px] bg-amber-600 text-white flex items-center gap-1.5 shadow transition';
+        }
+        if (btnReply) {
+            btnReply.className = 'px-3 py-1 rounded-lg font-bold text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 flex items-center gap-1.5 transition';
+        }
+        if (notice) {
+            notice.className = 'flex items-center gap-1.5 text-amber-400 font-semibold';
+            notice.innerHTML = '<i class="fa-solid fa-shield-halved text-[10px]"></i> Internal team note - Stored internally & NEVER sent to Telegram';
+        }
+        if (sendBtn) {
+            sendBtn.className = 'px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-600/20 transition active:scale-95';
+        }
+        if (sendText) sendText.textContent = 'Save Internal Note';
+        if (sendIcon) sendIcon.className = 'fa-solid fa-lock text-xs';
+        if (textarea) {
+            textarea.placeholder = 'Write an internal team note (Only visible to IT staff, never sent to customer)...';
+            textarea.classList.add('border-amber-500/50');
+            textarea.classList.remove('focus:border-indigo-500');
+            textarea.classList.add('focus:border-amber-500');
+        }
+    } else {
+        if (btnReply) {
+            btnReply.className = 'px-3 py-1 rounded-lg font-bold text-[11px] bg-indigo-600 text-white flex items-center gap-1.5 shadow transition';
+        }
+        if (btnNote) {
+            btnNote.className = 'px-3 py-1 rounded-lg font-bold text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300 border border-slate-700 flex items-center gap-1.5 transition';
+        }
+        if (notice) {
+            notice.className = 'flex items-center gap-1.5 text-indigo-400 font-medium';
+            notice.innerHTML = '<i class="fa-solid fa-lock text-[10px]"></i> Sent privately to user (not in group)';
+        }
+        if (sendBtn) {
+            sendBtn.className = 'px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition active:scale-95';
+        }
+        if (sendText) sendText.textContent = 'Send Private Reply';
+        if (sendIcon) sendIcon.className = 'fa-solid fa-paper-plane text-xs';
+        if (textarea) {
+            textarea.placeholder = 'Type your reply here... Delivered PRIVATELY to the user in their 1-on-1 chat';
+            textarea.classList.remove('border-amber-500/50', 'focus:border-amber-500');
+            textarea.classList.add('focus:border-indigo-500');
+        }
+    }
+}
+
+// Send Agent Reply OR Internal Note
 async function sendReply(e) {
     e.preventDefault();
     if (!currentTicketId) return;
@@ -845,32 +1041,55 @@ async function sendReply(e) {
 
     const btn = document.getElementById('send-reply-btn');
     btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending Private Reply...`;
 
-    try {
-        const res = await fetch(`/api/tickets/${currentTicketId}/reply`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
-        });
-        
-        const data = await res.json();
-        if (res.ok) {
-            textarea.value = '';
-            await loadTicketDetails(currentTicketId, true);
-            loadTickets();
-            
-            if (data.reason === 'user_not_started_private') {
-                alert('Notice: The user has not started the bot in private yet. A prompt was posted in the group asking them to click Start on @IT_Support3_bot to receive private replies.');
+    if (currentReplyMode === 'note') {
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving Note...`;
+        try {
+            const res = await fetch(`/api/tickets/${currentTicketId}/notes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: text })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                textarea.value = '';
+                await loadTicketDetails(currentTicketId, true);
+            } else {
+                alert('Failed to save internal note: ' + (data.detail || 'Unknown error'));
             }
-        } else {
-            alert('Failed to send reply: ' + (data.detail || 'Unknown error'));
+        } catch (err) {
+            alert('Server communication error');
+        } finally {
+            btn.disabled = false;
+            setReplyMode('note');
         }
-    } catch (err) {
-        alert('Server communication error');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<span>Send Private Reply</span><i class="fa-solid fa-paper-plane text-xs"></i>`;
+    } else {
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending Private Reply...`;
+        try {
+            const res = await fetch(`/api/tickets/${currentTicketId}/reply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                textarea.value = '';
+                await loadTicketDetails(currentTicketId, true);
+                loadTickets();
+                
+                if (data.reason === 'user_not_started_private') {
+                    alert('Notice: The user has not started the bot in private yet. A prompt was posted in the group asking them to click Start on @IT_Support3_bot to receive private replies.');
+                }
+            } else {
+                alert('Failed to send reply: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Server communication error');
+        } finally {
+            btn.disabled = false;
+            setReplyMode('reply');
+        }
     }
 }
 
@@ -957,11 +1176,233 @@ async function requestUserPhone() {
     }
 }
 
-// Quick canned reply
-function insertTemplate(templateText) {
+// Canned Responses / Quick Templates
+async function loadCannedResponses() {
+    try {
+        const res = await fetch('/api/canned-responses');
+        if (res.ok) {
+            const data = await res.json();
+            cachedCannedResponses = data.canned_responses || [];
+            renderCannedBar();
+        }
+    } catch (e) {
+        console.error('Failed to load canned responses:', e);
+    }
+}
+
+function renderCannedBar() {
+    const container = document.getElementById('canned-buttons-container');
+    if (!container) return;
+
+    if (cachedCannedResponses.length === 0) {
+        container.innerHTML = `<span class="text-slate-500 text-[10px] italic">No quick templates. Click Manage to add.</span>`;
+        return;
+    }
+
+    container.innerHTML = cachedCannedResponses.slice(0, 10).map(c => `
+        <button type="button" onclick="insertCannedText(${c.id})" 
+                class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 hover:border-slate-600 transition whitespace-nowrap active:scale-95 text-[11px]"
+                title="${escapeHtml(c.template_text)}">
+            ${escapeHtml(c.title)}
+        </button>
+    `).join('');
+}
+
+function insertCannedText(id) {
+    const item = cachedCannedResponses.find(c => c.id === id);
+    if (!item) return;
     const textarea = document.getElementById('reply-text');
-    textarea.value = templateText;
-    textarea.focus();
+    if (textarea) {
+        textarea.value = item.template_text;
+        textarea.focus();
+    }
+}
+
+function openCannedModal() {
+    document.getElementById('canned-modal').classList.remove('hidden');
+    renderCannedModalList();
+}
+
+function closeCannedModal() {
+    document.getElementById('canned-modal').classList.add('hidden');
+}
+
+function renderCannedModalList() {
+    const container = document.getElementById('canned-list-container');
+    if (!container) return;
+
+    if (cachedCannedResponses.length === 0) {
+        container.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs">No canned templates found.</div>`;
+        return;
+    }
+
+    container.innerHTML = cachedCannedResponses.map(c => `
+        <div class="p-3 rounded-xl bg-slate-900 border border-slate-700/80 flex items-start justify-between gap-3">
+            <div class="space-y-1 min-w-0">
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-white">${escapeHtml(c.title)}</span>
+                    <span class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px]">${escapeHtml(c.category || 'General')}</span>
+                </div>
+                <p class="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">${escapeHtml(c.template_text)}</p>
+            </div>
+            <button onclick="handleDeleteCanned(${c.id})" title="Delete template" class="w-7 h-7 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition shrink-0">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function handleCreateCanned(e) {
+    e.preventDefault();
+    const title = document.getElementById('canned-title').value.trim();
+    const category = document.getElementById('canned-category').value;
+    const template_text = document.getElementById('canned-text').value.trim();
+
+    if (!title || !template_text) return;
+
+    try {
+        const res = await fetch('/api/canned-responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, category, template_text })
+        });
+        if (res.ok) {
+            document.getElementById('canned-title').value = '';
+            document.getElementById('canned-text').value = '';
+            await loadCannedResponses();
+            renderCannedModalList();
+        } else {
+            alert('Failed to add template');
+        }
+    } catch (e) {
+        alert('Server communication error');
+    }
+}
+
+async function handleDeleteCanned(id) {
+    if (!confirm('Are you sure you want to delete this canned response?')) return;
+    try {
+        const res = await fetch(`/api/canned-responses/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            await loadCannedResponses();
+            renderCannedModalList();
+        }
+    } catch (e) {
+        alert('Error deleting template');
+    }
+}
+
+// Knowledge Base & FAQ Articles
+function openFaqModal() {
+    document.getElementById('faq-modal').classList.remove('hidden');
+    loadFaqArticles();
+}
+
+function closeFaqModal() {
+    document.getElementById('faq-modal').classList.add('hidden');
+}
+
+async function loadFaqArticles() {
+    const container = document.getElementById('faq-list-container');
+    const countEl = document.getElementById('faq-count');
+    if (container) {
+        container.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading FAQ articles...</div>`;
+    }
+
+    try {
+        const res = await fetch('/api/faqs');
+        if (res.ok) {
+            const data = await res.json();
+            cachedFaqs = data.faqs || [];
+            if (countEl) countEl.textContent = `${cachedFaqs.length} articles`;
+
+            if (cachedFaqs.length === 0) {
+                if (container) container.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs">No FAQ articles found. Add some above!</div>`;
+                return;
+            }
+
+            if (container) {
+                container.innerHTML = cachedFaqs.map(f => {
+                    const kws = (f.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                    const kwBadges = kws.map(k => `<span class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-mono">${escapeHtml(k)}</span>`).join(' ');
+
+                    return `
+                        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-700/80 space-y-2">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h5 class="text-xs font-bold text-white flex items-center gap-2">
+                                        <i class="fa-solid fa-circle-question text-indigo-400"></i>
+                                        <span>${escapeHtml(f.question)}</span>
+                                    </h5>
+                                    <div class="flex items-center gap-1.5 flex-wrap mt-1">
+                                        <span class="text-[10px] text-slate-500">Keywords:</span>
+                                        ${kwBadges}
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <span class="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono" title="Times this article helped users">
+                                        👍 ${f.helpful_count || 0}
+                                    </span>
+                                    <button onclick="handleDeleteFaq(${f.id})" title="Delete article" class="w-7 h-7 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/50 text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                ${escapeHtml(f.answer)}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (e) {
+        if (container) container.innerHTML = `<div class="p-4 text-center text-rose-400 text-xs">Failed to load FAQ articles.</div>`;
+    }
+}
+
+async function handleCreateFaq(e) {
+    e.preventDefault();
+    const keywords = document.getElementById('faq-keywords').value.trim();
+    const question = document.getElementById('faq-question').value.trim();
+    const answer = document.getElementById('faq-answer').value.trim();
+
+    if (!keywords || !question || !answer) return;
+
+    const btn = document.getElementById('save-faq-btn');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/faqs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords, question, answer })
+        });
+        if (res.ok) {
+            document.getElementById('faq-keywords').value = '';
+            document.getElementById('faq-question').value = '';
+            document.getElementById('faq-answer').value = '';
+            loadFaqArticles();
+        } else {
+            alert('Failed to save FAQ article');
+        }
+    } catch (err) {
+        alert('Server communication error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function handleDeleteFaq(id) {
+    if (!confirm('Are you sure you want to delete this FAQ article?')) return;
+    try {
+        const res = await fetch(`/api/faqs/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            loadFaqArticles();
+        }
+    } catch (e) {
+        alert('Failed to delete FAQ article');
+    }
 }
 
 // Analytics & Reports Controller
@@ -1065,6 +1506,22 @@ function renderReportUI(report) {
     document.getElementById('kpi-avg-rating').textContent = avgRating ? `⭐ ${avgRating}` : '⭐ --';
     document.getElementById('kpi-rating-count').textContent = `${s.rated_count || 0} ratings`;
 
+    // Category Breakdown Cards
+    const catContainer = document.getElementById('category-breakdown-container');
+    if (catContainer) {
+        const catMap = report.categories || {};
+        const catKeys = ['Network', 'Hardware', 'Software', 'Email & Accounts', 'Printers', 'ERP / Database', 'General'];
+        catContainer.innerHTML = catKeys.map(k => {
+            const count = catMap[k] || 0;
+            return `
+                <div class="p-2.5 rounded-xl bg-slate-900 border border-slate-700/60 flex flex-col items-center text-center">
+                    <span class="text-[10px] text-slate-400 font-medium truncate w-full" title="${escapeHtml(k)}">${escapeHtml(k)}</span>
+                    <span class="text-base font-bold text-indigo-300 mt-0.5 font-mono">${count}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
     // Team Leaderboard Table
     const teamTbody = document.getElementById('team-performance-tbody');
     const techs = report.technicians || [];
@@ -1102,7 +1559,7 @@ function renderReportUI(report) {
     document.getElementById('report-ticket-count').textContent = `${tickets.length} tickets`;
     
     if (tickets.length === 0) {
-        ticketsTbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-500">No tickets found in this period</td></tr>`;
+        ticketsTbody.innerHTML = `<tr><td colspan="9" class="py-4 text-center text-slate-500">No tickets found in this period</td></tr>`;
     } else {
         ticketsTbody.innerHTML = tickets.map(t => {
             const slaStatus = t.sla_breached 
@@ -1117,6 +1574,7 @@ function renderReportUI(report) {
                 <tr class="hover:bg-slate-800/40 transition">
                     <td class="py-2 px-3 text-indigo-300 font-bold">${escapeHtml(t.ticket_number)}</td>
                     <td class="py-2 px-3 font-sans truncate max-w-[120px]">${escapeHtml(t.user_name || 'User')}</td>
+                    <td class="py-2 px-3 text-center">${getCategoryBadge(t.category)}</td>
                     <td class="py-2 px-3 font-sans truncate max-w-[180px] text-slate-300">${escapeHtml(t.subject || '')}</td>
                     <td class="py-2 px-3 text-center uppercase text-[10px]">${getPriorityBadge(t.priority)}</td>
                     <td class="py-2 px-3 text-center font-sans text-slate-300">${escapeHtml(t.assigned_to || 'Unassigned')}</td>
@@ -1252,10 +1710,24 @@ async function handleDeleteUser(userId, username) {
     }
 }
 
-// Token Modal
-function openTokenModal() {
+// Bot & IT Group Configuration Modal
+async function openTokenModal() {
     document.getElementById('token-modal').classList.remove('hidden');
     document.getElementById('token-error').classList.add('hidden');
+    const succ = document.getElementById('token-success');
+    if (succ) succ.classList.add('hidden');
+
+    try {
+        const res = await fetch('/api/settings/it-group');
+        if (res.ok) {
+            const data = await res.json();
+            const itInput = document.getElementById('it-group-input');
+            if (itInput && data.it_alert_group_id) {
+                itInput.value = data.it_alert_group_id;
+            }
+        }
+    } catch (e) {}
+
     document.getElementById('token-input').focus();
 }
 
@@ -1266,35 +1738,56 @@ function closeTokenModal() {
 async function saveToken(e) {
     e.preventDefault();
     const token = document.getElementById('token-input').value.trim();
-    if (!token) return;
+    const itGroupInput = document.getElementById('it-group-input');
+    const itGroup = itGroupInput ? itGroupInput.value.trim() : '';
 
     const btn = document.getElementById('save-token-btn');
     const errBox = document.getElementById('token-error');
+    const succBox = document.getElementById('token-success');
     btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
     errBox.classList.add('hidden');
+    if (succBox) succBox.classList.add('hidden');
 
     try {
-        const res = await fetch('/api/settings/token', {
+        if (token) {
+            const res = await fetch('/api/settings/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errBox.textContent = data.detail || 'Invalid token. Please check @BotFather.';
+                errBox.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Save Settings';
+                return;
+            }
+        }
+
+        // Save IT Group ID
+        await fetch('/api/settings/it-group', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
+            body: JSON.stringify({ it_alert_group_id: itGroup })
         });
-        const data = await res.json();
-        if (res.ok) {
+
+        if (succBox) {
+            succBox.textContent = 'Settings saved successfully!';
+            succBox.classList.remove('hidden');
+        }
+
+        setTimeout(() => {
             closeTokenModal();
             checkBotStatus();
-            alert('Bot Token connected successfully!');
-        } else {
-            errBox.textContent = data.detail || 'Invalid token. Please check @BotFather.';
-            errBox.classList.remove('hidden');
-        }
+        }, 1200);
     } catch (e) {
         errBox.textContent = 'Server connection failed';
         errBox.classList.remove('hidden');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Save & Connect';
+        btn.textContent = 'Save Settings';
     }
 }
 

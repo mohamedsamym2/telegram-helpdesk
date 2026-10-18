@@ -119,6 +119,13 @@
                 <i class="fa-solid fa-gear"></i>
             </button>
 
+            <!-- Knowledge Base & FAQ Button -->
+            <button onclick="openFaqModal()" title="Knowledge Base & Auto-Reply FAQs" 
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold transition">
+                <i class="fa-solid fa-book-open text-indigo-400"></i>
+                <span>Knowledge Base</span>
+            </button>
+
             <!-- Reports & Analytics Button -->
             <button onclick="openReportsModal()" title="View SLA, Analytics & Export Reports" 
                     class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 text-xs font-semibold transition shadow-sm">
@@ -188,6 +195,29 @@
                     </button>
                     <button onclick="setQueueFilter('unassigned')" id="queue-unassigned" class="queue-tab flex-1 py-1 rounded-lg text-center font-semibold transition text-slate-400 hover:text-slate-200">
                         <i class="fa-solid fa-hand text-[9px] mr-1 text-amber-400"></i>Unassigned <span id="count-unassigned" class="opacity-80 text-[10px]">(0)</span>
+                    </button>
+                </div>
+
+                <!-- Category & SLA Filter Row -->
+                <div class="flex items-center gap-1.5 pt-0.5 text-[11px]">
+                    <div class="flex-1 relative">
+                        <select id="sidebar-category-filter" onchange="handleSidebarCategoryFilter(this.value)" 
+                                class="w-full bg-slate-800/90 border border-slate-700/80 rounded-lg px-2 py-1 text-slate-300 text-[11px] focus:outline-none focus:border-indigo-500 cursor-pointer">
+                            <option value="all">📂 All Categories</option>
+                            <option value="Network">🌐 Network</option>
+                            <option value="Hardware">💻 Hardware</option>
+                            <option value="Software">💿 Software</option>
+                            <option value="Email & Accounts">✉️ Email & Accounts</option>
+                            <option value="Printers">🖨️ Printers</option>
+                            <option value="ERP / Database">🗄️ ERP / Database</option>
+                            <option value="General">📁 General</option>
+                        </select>
+                    </div>
+                    <button onclick="toggleSlaRiskFilter()" id="sla-risk-filter-btn" title="Filter tickets with SLA Warning or Breached"
+                            class="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-rose-400 hover:bg-rose-500/20 font-semibold text-[11px] flex items-center gap-1 transition">
+                        <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>
+                        <span>SLA Risk</span>
+                        <span id="count-sla-risk-badge" class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[9px] font-mono">0</span>
                     </button>
                 </div>
             </div>
@@ -266,6 +296,20 @@
                                 </select>
                             </div>
 
+                            <!-- Category Selector -->
+                            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] hover:border-slate-600 transition whitespace-nowrap shadow-sm">
+                                <span class="text-slate-400 font-medium flex items-center gap-1"><i class="fa-solid fa-folder-tree text-[9px] text-slate-400"></i>Category:</span>
+                                <select id="ticket-category-select" onchange="handleCategoryChange(this.value)" class="bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer text-slate-200">
+                                    <option value="General" class="bg-slate-800 text-slate-300">📁 General</option>
+                                    <option value="Network" class="bg-slate-800 text-sky-400">🌐 Network</option>
+                                    <option value="Hardware" class="bg-slate-800 text-amber-400">💻 Hardware</option>
+                                    <option value="Software" class="bg-slate-800 text-purple-400">💿 Software</option>
+                                    <option value="Email & Accounts" class="bg-slate-800 text-indigo-400">✉️ Email & Accounts</option>
+                                    <option value="Printers" class="bg-slate-800 text-emerald-400">🖨️ Printers</option>
+                                    <option value="ERP / Database" class="bg-slate-800 text-rose-400">🗄️ ERP / Database</option>
+                                </select>
+                            </div>
+
                             <!-- SLA Countdown Badge -->
                             <div id="ticket-sla-badge" class="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/80 text-[11px] font-mono flex items-center gap-1.5 text-slate-300 whitespace-nowrap shadow-sm">
                                 <i class="fa-solid fa-clock text-[10px] text-indigo-400"></i>
@@ -307,16 +351,32 @@
                 </div>
 
                 <!-- Quick Canned Replies Bar (hidden if closed) -->
-                <div id="canned-bar" class="px-6 py-2 bg-slate-850/60 border-t border-slate-800 flex items-center gap-2 overflow-x-auto text-[11px]">
-                    <span class="text-slate-500 shrink-0 font-medium"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Quick replies:</span>
-                    <button onclick="insertTemplate('We have received your issue and our technical team is investigating now.')" class="canned-btn">Investigating</button>
-                    <button onclick="insertTemplate('Please restart your computer/device and check if the issue persists.')" class="canned-btn">Restart & Check</button>
-                    <button onclick="insertTemplate('The issue has been resolved. Please test and confirm.')" class="canned-btn">Resolved, Please Confirm</button>
-                    <button onclick="insertTemplate('Could you please provide a screenshot or exact error message?')" class="canned-btn">Request Screenshot</button>
+                <div id="canned-bar" class="px-6 py-2 bg-slate-850/60 border-t border-slate-800 flex items-center justify-between gap-2 overflow-x-auto text-[11px]">
+                    <div class="flex items-center gap-2 overflow-x-auto custom-scroll" id="canned-buttons-container">
+                        <!-- Dynamically populated from /api/canned-responses -->
+                    </div>
+                    <button onclick="openCannedModal()" title="Manage Canned Responses" class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-semibold flex items-center gap-1 transition">
+                        <i class="fa-solid fa-gear text-indigo-400"></i>
+                        <span>Manage</span>
+                    </button>
                 </div>
 
                 <!-- Message Reply Input Box -->
-                <div id="reply-container" class="p-4 bg-slate-850 border-t border-slate-800 shrink-0">
+                <div id="reply-container" class="p-4 bg-slate-850 border-t border-slate-800 shrink-0 space-y-2">
+                    <!-- Mode Toggle Tabs (Public Reply vs Internal Team Note) -->
+                    <div class="flex items-center gap-2 text-xs">
+                        <button type="button" onclick="setReplyMode('reply')" id="mode-reply-btn" 
+                                class="px-3 py-1 rounded-lg font-bold text-[11px] bg-indigo-600 text-white flex items-center gap-1.5 shadow transition">
+                            <i class="fa-solid fa-comment-dots text-[10px]"></i>
+                            <span>Reply to User (Telegram)</span>
+                        </button>
+                        <button type="button" onclick="setReplyMode('note')" id="mode-note-btn" 
+                                class="px-3 py-1 rounded-lg font-bold text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300 border border-slate-700 flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-lock text-[10px] text-amber-400"></i>
+                            <span>Internal Team Note (Private)</span>
+                        </button>
+                    </div>
+
                     <form id="reply-form" onsubmit="sendReply(event)" class="space-y-2">
                         <div class="relative">
                             <textarea id="reply-text" rows="3" placeholder="Type your reply here... Delivered PRIVATELY to the user in their 1-on-1 chat"
@@ -324,7 +384,7 @@
                         </div>
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2 text-[11px] text-slate-400">
-                                <span class="flex items-center gap-1.5 text-indigo-400 font-medium">
+                                <span id="reply-visibility-notice" class="flex items-center gap-1.5 text-indigo-400 font-medium">
                                     <i class="fa-solid fa-lock text-[10px]"></i>
                                     Sent privately to user (not in group)
                                 </span>
@@ -333,8 +393,8 @@
                             </div>
                             <button type="submit" id="send-reply-btn" 
                                     class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition active:scale-95">
-                                <span>Send Private Reply</span>
-                                <i class="fa-solid fa-paper-plane text-xs"></i>
+                                <span id="send-reply-btn-text">Send Private Reply</span>
+                                <i id="send-reply-btn-icon" class="fa-solid fa-paper-plane text-xs"></i>
                             </button>
                         </div>
                     </form>
@@ -402,40 +462,191 @@
         </div>
     </div>
 
-    <!-- Bot Token Settings Modal -->
+    <!-- Bot & IT Team Configuration Modal -->
     <div id="token-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div class="flex items-center justify-between border-b border-slate-700 pb-3">
                 <h3 class="font-bold text-sm text-white flex items-center gap-2">
                     <i class="fa-brands fa-telegram text-sky-400 text-base"></i>
-                    Telegram Bot Token Configuration
+                    Telegram Bot & IT Alerts Configuration
                 </h3>
                 <button onclick="closeTokenModal()" class="text-slate-400 hover:text-white transition">
                     <i class="fa-solid fa-xmark text-base"></i>
                 </button>
             </div>
 
-            <div class="text-xs text-slate-300 space-y-2 leading-relaxed">
-                <p>Paste your Telegram <b>API Token</b> obtained from <b>@BotFather</b> to connect the bot service.</p>
-                <div class="p-3 bg-slate-900 rounded-lg border border-slate-700 font-mono text-[11px] text-slate-400 break-all select-all">
-                    Example: 8825356962:AAH-IwHd43WBNSp34un-RVoQD2w3IjKwlbs
-                </div>
-            </div>
-
-            <form onsubmit="saveToken(event)" class="space-y-4 pt-2">
+            <form onsubmit="saveToken(event)" class="space-y-4 pt-1">
                 <div>
-                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Bot Token</label>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Bot Token</label>
                     <input type="text" id="token-input" required placeholder="Paste bot token here..." 
                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500">
+                    <p class="text-[10px] text-slate-400 mt-1">Obtained from <b>@BotFather</b> on Telegram.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                        <span>IT Team Telegram Group ID (معرف جروب الـ IT)</span>
+                        <span class="text-[10px] text-indigo-400">Feature 1</span>
+                    </label>
+                    <input type="text" id="it-group-input" placeholder="-100xxxxxxxxxx" 
+                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500">
+                    <p class="text-[10px] text-slate-400 mt-1">
+                        أضف البوت لجروب فريق الـ IT وضع Chat ID لتلقي إشعارات التذاكر الجديدة مع زر <b>[استلام التذكرة]</b> وتنبيهات كسر مهلة الـ SLA فوراً.
+                    </p>
                 </div>
 
                 <div id="token-error" class="hidden p-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs"></div>
+                <div id="token-success" class="hidden p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs"></div>
 
                 <div class="flex items-center justify-end gap-2 pt-2">
                     <button type="button" onclick="closeTokenModal()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition">Cancel</button>
-                    <button type="submit" id="save-token-btn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition">Save & Connect</button>
+                    <button type="submit" id="save-token-btn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition">Save Settings</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Knowledge Base & FAQ Management Modal -->
+    <div id="faq-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-850 border border-slate-700/80 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-800/60">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                        <i class="fa-solid fa-book-open text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-white">Knowledge Base & Auto-Reply FAQs</h3>
+                        <p class="text-xs text-slate-400">Automate solutions for repetitive employee inquiries on Telegram</p>
+                    </div>
+                </div>
+                <button onclick="closeFaqModal()" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scroll">
+                <!-- Add New FAQ Form -->
+                <div class="bg-slate-800/80 border border-slate-700/70 rounded-xl p-4 space-y-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-plus-circle text-emerald-400"></i>
+                        <span>Add New Solution / FAQ Article</span>
+                    </h4>
+                    <form onsubmit="handleCreateFaq(event)" class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Keywords / الكلمات المفتاحية (comma-separated)</label>
+                                <input type="text" id="faq-keywords" required placeholder="wifi, واي فاي, باسورد, انترنت" 
+                                       class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Article Title / عنوان المشكلة</label>
+                                <input type="text" id="faq-question" required placeholder="كيفية الاتصال بشبكة الواي فاي للشركة" 
+                                       class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Solution / نص الحل المقترح للمستخدم</label>
+                            <textarea id="faq-answer" rows="3" required placeholder="اكتب الحل المقترح بالتفصيل هنا..." 
+                                      class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"></textarea>
+                        </div>
+                        <div class="flex items-center justify-end gap-2 pt-1">
+                            <button type="submit" id="save-faq-btn" class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow transition flex items-center gap-1.5 active:scale-95">
+                                <i class="fa-solid fa-check text-[10px]"></i>
+                                <span>Save FAQ Article</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Existing FAQs List -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-indigo-400"></i>
+                            <span>Active Knowledge Base Articles</span>
+                        </h4>
+                        <span id="faq-count" class="text-xs text-slate-400">0 articles</span>
+                    </div>
+                    <div id="faq-list-container" class="space-y-2.5">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canned Responses Manager Modal -->
+    <div id="canned-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-850 border border-slate-700/80 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-800/60">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                        <i class="fa-solid fa-bolt text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-white">Manage Quick Canned Replies</h3>
+                        <p class="text-xs text-slate-400">Add or remove 1-click template replies for support technicians</p>
+                    </div>
+                </div>
+                <button onclick="closeCannedModal()" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scroll">
+                <!-- Add New Canned Form -->
+                <div class="bg-slate-800/80 border border-slate-700/70 rounded-xl p-4 space-y-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-plus-circle text-amber-400"></i>
+                        <span>Add New Quick Reply Template</span>
+                    </h4>
+                    <form onsubmit="handleCreateCanned(event)" class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Button Title / عنوان الزر</label>
+                                <input type="text" id="canned-title" required placeholder="مثال: فحص كابل الإنترنت" 
+                                       class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-300 mb-1">Category / القسم</label>
+                                <select id="canned-category" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                                    <option value="General">📁 General</option>
+                                    <option value="Network">🌐 Network</option>
+                                    <option value="Hardware">💻 Hardware</option>
+                                    <option value="Software">💿 Software</option>
+                                    <option value="Email & Accounts">✉️ Email & Accounts</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-300 mb-1">Template Message / نص الرسالة الجاهزة</label>
+                            <textarea id="canned-text" rows="3" required placeholder="اكتب نص الرد الجاهز الذي سيتم إدراجه بضغطة زر واحدة..." 
+                                      class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"></textarea>
+                        </div>
+                        <div class="flex items-center justify-end gap-2 pt-1">
+                            <button type="submit" class="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow transition flex items-center gap-1.5 active:scale-95">
+                                <i class="fa-solid fa-plus text-[10px]"></i>
+                                <span>Add Template</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Existing Canned List -->
+                <div class="space-y-3">
+                    <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-list text-amber-400"></i>
+                        <span>Available Quick Templates</span>
+                    </h4>
+                    <div id="canned-list-container" class="space-y-2">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -553,6 +764,20 @@
                     </div>
                 </div>
 
+                <!-- Category Breakdown Section -->
+                <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl overflow-hidden shadow-sm p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-bold text-xs text-white uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-folder-tree text-indigo-400"></i>
+                            Tickets by Category
+                        </h4>
+                        <span class="text-[11px] text-slate-400">Distribution of tickets across IT departments</span>
+                    </div>
+                    <div id="category-breakdown-container" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+
                 <!-- Team Performance Leaderboard -->
                 <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl overflow-hidden shadow-sm">
                     <div class="px-4 py-3 border-b border-slate-700/80 flex items-center justify-between">
@@ -596,6 +821,7 @@
                                 <tr>
                                     <th class="py-2 px-3"># Ticket</th>
                                     <th class="py-2 px-3">Requester</th>
+                                    <th class="py-2 px-3">Category</th>
                                     <th class="py-2 px-3">Subject</th>
                                     <th class="py-2 px-3 text-center">Priority</th>
                                     <th class="py-2 px-3 text-center">Assigned</th>

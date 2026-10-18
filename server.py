@@ -45,6 +45,7 @@ class SafeLogger:
 sys.stdout = SafeLogger(sys.stdout, LOG_FILE)
 sys.stderr = SafeLogger(sys.stderr, LOG_FILE)
 
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
 from fastapi.responses import FileResponse, JSONResponse
@@ -57,7 +58,11 @@ from database import (
     get_stats, update_ticket_phone, verify_user_credentials,
     update_user_password, get_all_users, create_user,
     delete_user, create_session, verify_session, delete_session,
-    assign_ticket, update_ticket_priority, get_analytics_report
+    assign_ticket, update_ticket_priority, get_analytics_report,
+    update_ticket_category, add_internal_note,
+    get_tickets_for_sla_check, mark_sla_warning_sent, mark_sla_breach_sent,
+    get_canned_responses, create_canned_response, delete_canned_response,
+    get_all_faqs, get_faq, create_faq, update_faq, delete_faq
 )
 from telegram_bot import TelegramBot
 
@@ -89,8 +94,52 @@ async def lifespan(app: FastAPI):
     # Startup
     init_db()
     await bot.start()
+    
+    # SLA Background Monitor Loop
+    async def sla_monitor_loop():
+        while True:
+            try:
+                await asyncio.sleep(45)
+                now_dt = datetime.now()
+                tickets = get_tickets_for_sla_check()
+                for t in tickets:
+                    try:
+                        dl = datetime.strptime(t["sla_deadline"], "%Y-%m-%d %H:%M:%S")
+                        diff_mins = (dl - now_dt).total_seconds() / 60.0
+                        # 1. Warning: within 30 minutes and not alerted
+                        if 0 < diff_mins <= 30 and not t.get("sla_warning_sent"):
+                            mark_sla_warning_sent(t["id"])
+                            await bot.send_sla_alert(t, "warning", remaining_mins=diff_mins)
+                            await manager.broadcast({
+                                "type": "sla_warning",
+                                "ticket_id": t["id"],
+                                "ticket_number": t["ticket_number"],
+                                "remaining_mins": round(diff_mins)
+                            })
+                        # 2. Breached: deadline passed and not alerted
+                        elif diff_mins <= 0 and not t.get("sla_breach_sent"):
+                            mark_sla_breach_sent(t["id"])
+                            await bot.send_sla_alert(t, "breached")
+                            await manager.broadcast({
+                                "type": "sla_breached",
+                                "ticket_id": t["id"],
+                                "ticket_number": t["ticket_number"]
+                            })
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(10)
+
+    sla_task = asyncio.create_task(sla_monitor_loop())
     yield
     # Shutdown
+    sla_task.cancel()
+    try:
+        await sla_task
+    except asyncio.CancelledError:
+        pass
     await bot.stop()
 
 app = FastAPI(title="IT Support Helpdesk API", lifespan=lifespan)
@@ -160,6 +209,26 @@ class AssignPayload(BaseModel):
 
 class PriorityPayload(BaseModel):
     priority: str
+
+class CategoryPayload(BaseModel):
+    category: str
+
+class InternalNotePayload(BaseModel):
+    text: str
+
+class CannedPayload(BaseModel):
+    title: str
+    text: str
+    category: Optional[str] = "General"
+
+class FAQPayload(BaseModel):
+    keywords: str
+    question: str
+    answer: str
+    is_active: Optional[int] = 1
+
+class ITGroupPayload(BaseModel):
+    group_id: str
 
 # Routes
 @app.get("/")
@@ -291,8 +360,12 @@ async def set_bot_token(payload: TokenPayload, user: str = Depends(get_current_u
 
 # Ticket Management Endpoints (Protected)
 @app.get("/api/tickets")
-async def list_tickets(status: Optional[str] = "all", assigned: Optional[str] = None, user: str = Depends(get_current_user)):
-    tickets = get_all_tickets(status_filter=status, assigned_filter=assigned)
+async def list_tickets(status: Optional[str] = "all", 
+                       assigned: Optional[str] = None, 
+                       category: Optional[str] = None, 
+                       sla: Optional[str] = None, 
+                       user: str = Depends(get_current_user)):
+    tickets = get_all_tickets(status_filter=status, assigned_filter=assigned, category_filter=category, sla_filter=sla)
     stats = get_stats(agent_username=user)
     return {"tickets": tickets, "stats": stats}
 
@@ -343,6 +416,27 @@ async def reply_to_ticket(ticket_id: int, payload: ReplyPayload, user: str = Dep
         "delivered": delivery_res.get("delivered", True),
         "reason": delivery_res.get("reason", "")
     }
+
+@app.post("/api/tickets/{ticket_id}/notes")
+async def add_ticket_internal_note(ticket_id: int, payload: InternalNotePayload, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Note text cannot be empty")
+        
+    msg = add_internal_note(ticket_id, author_name=user, text=text)
+    
+    await manager.broadcast({
+        "type": "new_message",
+        "ticket_id": ticket_id,
+        "message": msg,
+        "ticket_status": ticket["status"],
+        "is_internal": True
+    })
+    return {"ok": True, "message": msg}
 
 @app.post("/api/tickets/{ticket_id}/status")
 async def change_ticket_status(ticket_id: int, payload: StatusPayload, user: str = Depends(get_current_user)):
@@ -426,6 +520,76 @@ async def change_ticket_priority(ticket_id: int, payload: PriorityPayload, user:
     })
     return {"ok": True, "ticket": updated}
 
+@app.post("/api/tickets/{ticket_id}/category")
+async def change_ticket_category_endpoint(ticket_id: int, payload: CategoryPayload, user: str = Depends(get_current_user)):
+    ticket = get_ticket_details(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    updated = update_ticket_category(ticket_id, payload.category)
+    
+    await manager.broadcast({
+        "type": "category_changed",
+        "ticket_id": ticket_id,
+        "category": payload.category,
+        "ticket": updated
+    })
+    return {"ok": True, "ticket": updated}
+
+# --- Canned Responses Endpoints ---
+@app.get("/api/canned-responses")
+async def list_canned_responses(user: str = Depends(get_current_user)):
+    responses = get_canned_responses()
+    return {"canned_responses": responses}
+
+@app.post("/api/canned-responses")
+async def add_canned_response(payload: CannedPayload, user: str = Depends(get_current_user)):
+    if not payload.title.strip() or not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Title and text are required")
+    item = create_canned_response(payload.title, payload.text, payload.category or "General")
+    return {"ok": True, "canned_response": item}
+
+@app.delete("/api/canned-responses/{item_id}")
+async def remove_canned_response(item_id: int, user: str = Depends(get_current_user)):
+    ok = delete_canned_response(item_id)
+    return {"ok": ok}
+
+# --- Knowledge Base / FAQ Articles Endpoints ---
+@app.get("/api/faqs")
+async def list_faqs(user: str = Depends(get_current_user)):
+    faqs = get_all_faqs()
+    return {"faqs": faqs}
+
+@app.post("/api/faqs")
+async def add_faq(payload: FAQPayload, user: str = Depends(get_current_user)):
+    if not payload.question.strip() or not payload.answer.strip():
+        raise HTTPException(status_code=400, detail="Question and answer are required")
+    item = create_faq(payload.keywords, payload.question, payload.answer)
+    return {"ok": True, "faq": item}
+
+@app.put("/api/faqs/{faq_id}")
+async def edit_faq(faq_id: int, payload: FAQPayload, user: str = Depends(get_current_user)):
+    item = update_faq(faq_id, payload.keywords, payload.question, payload.answer, payload.is_active if payload.is_active is not None else 1)
+    if not item:
+        raise HTTPException(status_code=404, detail="FAQ not found")
+    return {"ok": True, "faq": item}
+
+@app.delete("/api/faqs/{faq_id}")
+async def remove_faq(faq_id: int, user: str = Depends(get_current_user)):
+    ok = delete_faq(faq_id)
+    return {"ok": ok}
+
+# --- IT Alert Group Settings Endpoints ---
+@app.get("/api/settings/it-group")
+async def get_it_group_setting(user: str = Depends(get_current_user)):
+    gid = bot.get_it_alert_group_id()
+    return {"group_id": gid}
+
+@app.post("/api/settings/it-group")
+async def set_it_group_setting(payload: ITGroupPayload, user: str = Depends(get_current_user)):
+    bot.set_it_alert_group_id(payload.group_id)
+    return {"ok": True, "group_id": payload.group_id}
+
 # Analytics & Reports Endpoints
 @app.get("/api/reports")
 async def get_reports_endpoint(start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(get_current_user)):
@@ -445,7 +609,7 @@ async def export_reports_csv(start_date: Optional[str] = None, end_date: Optiona
     # Headers
     writer.writerow([
         "Ticket Number", "Created At", "Requester Name", "Username", "Phone",
-        "Source Chat", "Subject", "Status", "Priority", "Assigned Technician",
+        "Source Chat", "Subject", "Status", "Priority", "Category", "Assigned Technician",
         "First Response At", "Closed At", "SLA Deadline", "SLA Status",
         "Customer Rating (1-5)", "Rated At"
     ])
@@ -463,6 +627,7 @@ async def export_reports_csv(start_date: Optional[str] = None, end_date: Optiona
             t.get("subject", ""),
             t.get("status", "").upper(),
             t.get("priority", "medium").upper(),
+            t.get("category", "General"),
             t.get("assigned_to") or "Unassigned",
             t.get("first_response_at", ""),
             t.get("closed_at", ""),

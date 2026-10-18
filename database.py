@@ -166,9 +166,12 @@ def init_db():
         ("assigned_to", "TEXT DEFAULT NULL"),
         ("assigned_at", "TEXT DEFAULT NULL"),
         ("priority", "TEXT DEFAULT 'medium'"),
+        ("category", "TEXT DEFAULT 'General'"),
         ("first_response_at", "TEXT DEFAULT NULL"),
         ("sla_deadline", "TEXT DEFAULT NULL"),
         ("sla_breached", "INTEGER DEFAULT 0"),
+        ("sla_warning_sent", "INTEGER DEFAULT 0"),
+        ("sla_breach_sent", "INTEGER DEFAULT 0"),
         ("rating", "INTEGER DEFAULT NULL"),
         ("rating_comment", "TEXT DEFAULT NULL"),
         ("rated_at", "TEXT DEFAULT NULL"),
@@ -190,10 +193,40 @@ def init_db():
         media_url TEXT DEFAULT '',
         created_at TEXT,
         telegram_message_id INTEGER DEFAULT 0,
+        is_internal INTEGER DEFAULT 0,
         FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
     )
     """)
     
+    msg_cols = [("is_internal", "INTEGER DEFAULT 0")]
+    for col_name, col_type in msg_cols:
+        try:
+            cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS canned_responses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        text TEXT,
+        category TEXT DEFAULT 'General',
+        created_at TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS faq_articles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keywords TEXT,
+        question TEXT,
+        answer TEXT,
+        is_active INTEGER DEFAULT 1,
+        helpful_count INTEGER DEFAULT 0,
+        created_at TEXT
+    )
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY,
@@ -226,6 +259,8 @@ def init_db():
     conn.close()
     
     init_admin_auth()
+    init_default_canned_responses()
+    init_default_faqs()
 
 def get_setting(key: str, default: str = "") -> str:
     conn = get_db()
@@ -331,12 +366,13 @@ def get_latest_phone_for_user(telegram_user_id: int) -> str:
 def create_ticket(telegram_chat_id: int, telegram_user_id: int, user_name: str, 
                   username: str, phone_number: str = "", chat_type: str = "private", 
                   chat_title: str = "", subject: str = "", last_message_id: int = 0,
-                  priority: str = "medium") -> Dict[str, Any]:
+                  priority: str = "medium", category: str = "General") -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prio = priority.lower() if priority else "medium"
     if prio not in SLA_HOURS:
         prio = "medium"
     sla_deadline = calculate_sla_deadline(now, prio)
+    cat = (category or "General").strip()
     
     # Auto-resolve phone number if not provided from past user profile
     clean_phone = (phone_number or "").strip()
@@ -351,10 +387,10 @@ def create_ticket(telegram_chat_id: int, telegram_user_id: int, user_name: str,
     cursor.execute("""
         INSERT INTO tickets (telegram_chat_id, telegram_user_id, user_name, username, 
                              phone_number, chat_type, chat_title, status, subject, 
-                             last_message_id, priority, sla_deadline, sla_breached, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, ?, ?)
+                             last_message_id, priority, category, sla_deadline, sla_breached, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 0, ?, ?)
     """, (telegram_chat_id, telegram_user_id, user_name, username, clean_phone, chat_type, 
-          chat_title, subject, last_message_id, prio, sla_deadline, now, now))
+          chat_title, subject, last_message_id, prio, cat, sla_deadline, now, now))
     
     ticket_id = cursor.lastrowid
     ticket_number = f"TK-{1000 + ticket_id}"
@@ -435,6 +471,22 @@ def update_ticket_priority(ticket_id: int, priority: str) -> Optional[Dict[str, 
     conn.close()
     return dict(updated) if updated else None
 
+def update_ticket_category(ticket_id: int, category: str) -> Optional[Dict[str, Any]]:
+    cat = (category or "General").strip()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE tickets 
+        SET category = ?, updated_at = ?
+        WHERE id = ?
+    """, (cat, now, ticket_id))
+    conn.commit()
+    cursor.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+    updated = cursor.fetchone()
+    conn.close()
+    return dict(updated) if updated else None
+
 def update_ticket_status(ticket_id: int, status: str) -> Optional[Dict[str, Any]]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if status == 'resolved':
@@ -488,18 +540,19 @@ def save_ticket_rating(ticket_id: int, rating: int, comment: str = "") -> Dict[s
     return ticket
 
 def add_message(ticket_id: int, sender_type: str, sender_name: str, text: str, 
-                media_type: str = "text", media_url: str = "", telegram_message_id: int = 0) -> Dict[str, Any]:
+                media_type: str = "text", media_url: str = "", telegram_message_id: int = 0,
+                is_internal: int = 0) -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO messages (ticket_id, sender_type, sender_name, text, media_type, media_url, created_at, telegram_message_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (ticket_id, sender_type, sender_name, text, media_type, media_url, now, telegram_message_id))
+        INSERT INTO messages (ticket_id, sender_type, sender_name, text, media_type, media_url, created_at, telegram_message_id, is_internal)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (ticket_id, sender_type, sender_name, text, media_type, media_url, now, telegram_message_id, is_internal))
     msg_id = cursor.lastrowid
     
-    # If agent reply, record first_response_at if not set
-    if sender_type == "agent":
+    # If external agent reply, record first_response_at if not set
+    if sender_type == "agent" and not is_internal:
         cursor.execute("SELECT first_response_at FROM tickets WHERE id = ?", (ticket_id,))
         t_row = cursor.fetchone()
         if t_row and not t_row["first_response_at"]:
@@ -513,7 +566,19 @@ def add_message(ticket_id: int, sender_type: str, sender_name: str, text: str,
     conn.close()
     return msg
 
-def get_all_tickets(status_filter: Optional[str] = None, assigned_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+def add_internal_note(ticket_id: int, author_name: str, text: str) -> Dict[str, Any]:
+    return add_message(
+        ticket_id=ticket_id,
+        sender_type="internal_note",
+        sender_name=author_name,
+        text=text,
+        is_internal=1
+    )
+
+def get_all_tickets(status_filter: Optional[str] = None, 
+                    assigned_filter: Optional[str] = None,
+                    category_filter: Optional[str] = None,
+                    sla_filter: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_db()
     cursor = conn.cursor()
     
@@ -539,6 +604,13 @@ def get_all_tickets(status_filter: Optional[str] = None, assigned_filter: Option
         elif assigned_filter != 'all':
             query += " AND t.assigned_to = ?"
             params.append(assigned_filter)
+
+    if category_filter and category_filter != 'all':
+        query += " AND t.category = ?"
+        params.append(category_filter)
+
+    if sla_filter == 'risk':
+        query += " AND (t.sla_breached = 1 OR t.sla_warning_sent = 1)"
         
     query += " ORDER BY t.updated_at DESC"
     cursor.execute(query, params)
@@ -600,6 +672,20 @@ def get_stats(agent_username: Optional[str] = None) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('resolved', 'closed') AND assigned_to = ?", (agent_username,))
         mine_closed = cursor.fetchone()[0]
 
+    # 4. SLA Risk count (breached or in warning among open tickets)
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress') AND (sla_breached = 1 OR sla_warning_sent = 1)")
+    sla_risks = cursor.fetchone()[0]
+
+    # 5. CSAT average rating
+    cursor.execute("SELECT AVG(rating), COUNT(rating) FROM tickets WHERE rating IS NOT NULL")
+    r_row = cursor.fetchone()
+    avg_rating = round(r_row[0], 1) if (r_row and r_row[0] is not None) else None
+    rated_count = r_row[1] if r_row else 0
+
+    # 6. Categories breakdown
+    cursor.execute("SELECT category, COUNT(*) FROM tickets GROUP BY category")
+    cat_counts = {r[0] or "General": r[1] for r in cursor.fetchall()}
+
     conn.close()
     return {
         "global": {
@@ -625,17 +711,211 @@ def get_stats(agent_username: Optional[str] = None) -> Dict[str, Any]:
         "closed": closed_all,
         "total": total_all,
         "unassigned": unassigned_total,
-        "assigned_to_me": mine_total
+        "assigned_to_me": mine_total,
+        "sla_risks": sla_risks,
+        "avg_rating": avg_rating,
+        "rated_count": rated_count,
+        "categories": cat_counts
     }
-    
-    # Calculate CSAT average rating
-    cursor.execute("SELECT AVG(rating), COUNT(rating) FROM tickets WHERE rating IS NOT NULL")
-    r_row = cursor.fetchone()
-    stats["avg_rating"] = round(r_row[0], 1) if (r_row and r_row[0] is not None) else None
-    stats["rated_count"] = r_row[1] if r_row else 0
-    
+
+# --- SLA Escalation Background Monitor Helpers ---
+def get_tickets_for_sla_check() -> List[Dict[str, Any]]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM tickets 
+        WHERE status IN ('open', 'in_progress') AND sla_deadline IS NOT NULL
+    """)
+    rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
-    return stats
+    return rows
+
+def mark_sla_warning_sent(ticket_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tickets SET sla_warning_sent = 1 WHERE id = ?", (ticket_id,))
+    conn.commit()
+    conn.close()
+
+def mark_sla_breach_sent(ticket_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tickets SET sla_breached = 1, sla_breach_sent = 1 WHERE id = ?", (ticket_id,))
+    conn.commit()
+    conn.close()
+
+# --- Canned Responses Database Functions ---
+def init_default_canned_responses():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM canned_responses")
+    if cursor.fetchone()[0] == 0:
+        defaults = [
+            ("🔄 إعادة تشغيل الجهاز", "يرجى إعادة تشغيل جهاز الكمبيوتر أو الراوتر وتجربة الأمر مجدداً، وأخبرنا هل ما زالت المشكلة قائمة؟", "Hardware"),
+            ("🌐 فحص كابل الشبكة", "يرجى التأكد من توصيل كابل الإنترنت بإحكام في الجهاز، والتأكد من إضاءة لمبة كارت الشبكة الخضراء.", "Network"),
+            ("📸 طلب لقطة شاشة", "يرجى إرسال لقطة شاشة (Screenshot) أو صورة بكاميرا الهاتف لرسالة الخطأ التي تظهر لك لنتمكن من مساعدتك فوراً.", "General"),
+            ("⚙️ جاري الفحص والمتابعة", "تم استلام تفاصيل مشكلتك وجاري فحصها والعمل عليها الآن بواسطة مهندس الدعم الفني.", "General"),
+            ("📞 طلب اتصال AnyDesk", "يرجى تشغيل برنامج AnyDesk وتزويدنا برقم الـ ID (الرمز المكون من 9 أرقام) للاتصال بجهازك وحل المشكلة فوراً.", "Software"),
+            ("🔑 إعادة تعيين كلمة المرور", "تمت إعادة تعيين كلمة المرور الخاصة بك بنجاح. يرجى تسجيل الدخول باستخدام كلمة المرور المؤقتة وتغييرها فور الدخول.", "Email & Accounts"),
+            ("✅ تم الحل والتأكيد", "تم الانتهاء من حل المشكلة من جانبنا بنجاح. يرجى التجربة الآن والتأكيد معنا.", "General"),
+        ]
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for title, text, cat in defaults:
+            cursor.execute("INSERT INTO canned_responses (title, text, category, created_at) VALUES (?, ?, ?, ?)",
+                           (title, text, cat, now))
+        conn.commit()
+    conn.close()
+
+def get_canned_responses() -> List[Dict[str, Any]]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM canned_responses ORDER BY id ASC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def create_canned_response(title: str, text: str, category: str = "General") -> Dict[str, Any]:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO canned_responses (title, text, category, created_at) VALUES (?, ?, ?, ?)",
+                   (title.strip(), text.strip(), (category or "General").strip(), now))
+    conn.commit()
+    item_id = cursor.lastrowid
+    cursor.execute("SELECT * FROM canned_responses WHERE id = ?", (item_id,))
+    row = dict(cursor.fetchone())
+    conn.close()
+    return row
+
+def delete_canned_response(item_id: int) -> bool:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM canned_responses WHERE id = ?", (item_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+# --- Knowledge Base / FAQ Articles Functions ---
+def init_default_faqs():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM faq_articles")
+    if cursor.fetchone()[0] == 0:
+        defaults = [
+            (
+                "wifi, واي فاي, وايفاي, باسورد الواي فاي, انترنت, شبكة, نت",
+                "كيفية الاتصال بشبكة الإنترنت / الواي فاي للشركة",
+                "اسم الشبكة الخاصة بالموظفين هي: Company-Staff.\nكلمة المرور: Welcome@2026.\nفي حال واجهت انقطاع في الخدمة تأكد من تفعيل زر Wi-Fi وإعادة تشغيل محول الشبكة."
+            ),
+            (
+                "طابعة, برنتر, printer, طابعه, طباعة, تطبع",
+                "كيفية تعريف أو الاتصال بالطابعة الشبكية",
+                "للاتصال بالطابعة الشبكية:\n1. اضغط على زر Windows + R\n2. اكتب \\\\print-server واضغط Enter\n3. اضغط مرتين على الطابعة الخاصة بقسمك للتثبيت التلقائي.\nإذا كانت الطابعة معلقة، تأكد من وجود ورق وحبر كافيين."
+            ),
+            (
+                "باسورد, كلمة السر, نسيت, قفل, locked, password, حساب",
+                "إعادة تعيين كلمة المرور أو فك قفل الحساب",
+                "إذا تم قفل حسابك بسبب محاولات دخول خاطئة، ينتظر النظام تلقائياً 5 دقائق لفك القفل.\nإذا نسيت كلمة المرور بالكامل، يرجى كتابة اسم المستخدم ورقم هاتفك هنا وسيقوم مهندس الـ IT بتعيين كلمة مرور جديدة لك فوراً."
+            ),
+            (
+                "anydesk, اني ديسك, انيديسك, ريموت, عن بعد, remote",
+                "تحميل وتشغيل برنامج الدعم عن بعد AnyDesk",
+                "يرجى فتح المتصفح والدخول إلى https://anydesk.com وتحميل البرنامج مجاناً.\nبعد تشغيل البرنامج، يرجى تزويد مهندس الدعم بالرمز المكون من 9 أرقام (Your Address) للسماح له بالاتصال بجهازك وحل المشكلة فوراً."
+            ),
+            (
+                "outlook, اوتلوك, ايميل, بريد, email, ميل",
+                "مشاكل البريد الإلكتروني Outlook أو عدم وصول الرسائل",
+                "1. تأكد من اتصال الإنترنت وظهور عبارة Connected أسفل نافذة الـ Outlook.\n2. اضغط على تبويب Send/Receive ثم Send/Receive All Folders.\n3. إذا طلب كلمة المرور، يرجى إعادة إدخالها والتأكد من عدم تفعيل Caps Lock."
+            )
+        ]
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for kw, q, a in defaults:
+            cursor.execute("INSERT INTO faq_articles (keywords, question, answer, is_active, helpful_count, created_at) VALUES (?, ?, ?, 1, 0, ?)",
+                           (kw, q, a, now))
+        conn.commit()
+    conn.close()
+
+def get_all_faqs() -> List[Dict[str, Any]]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM faq_articles ORDER BY id ASC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_faq(faq_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM faq_articles WHERE id = ?", (faq_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_faq(keywords: str, question: str, answer: str) -> Dict[str, Any]:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO faq_articles (keywords, question, answer, is_active, helpful_count, created_at) VALUES (?, ?, ?, 1, 0, ?)",
+                   (keywords.strip(), question.strip(), answer.strip(), now))
+    conn.commit()
+    fid = cursor.lastrowid
+    cursor.execute("SELECT * FROM faq_articles WHERE id = ?", (fid,))
+    row = dict(cursor.fetchone())
+    conn.close()
+    return row
+
+def update_faq(faq_id: int, keywords: str, question: str, answer: str, is_active: int = 1) -> Optional[Dict[str, Any]]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE faq_articles SET keywords = ?, question = ?, answer = ?, is_active = ? WHERE id = ?",
+                   (keywords.strip(), question.strip(), answer.strip(), is_active, faq_id))
+    conn.commit()
+    cursor.execute("SELECT * FROM faq_articles WHERE id = ?", (faq_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def delete_faq(faq_id: int) -> bool:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM faq_articles WHERE id = ?", (faq_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+def increment_faq_helpful(faq_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE faq_articles SET helpful_count = helpful_count + 1 WHERE id = ?", (faq_id,))
+    conn.commit()
+    conn.close()
+
+def match_faq(user_text: str) -> Optional[Dict[str, Any]]:
+    """Matches user query against active FAQ keywords and returns best matching FAQ if score >= 1."""
+    if not user_text or len(user_text.strip()) < 3:
+        return None
+    
+    clean_text = user_text.lower().strip()
+    faqs = get_all_faqs()
+    
+    best_match = None
+    best_score = 0
+    
+    for f in faqs:
+        if not f.get("is_active"):
+            continue
+        keywords = [k.strip().lower() for k in f.get("keywords", "").split(",") if k.strip()]
+        score = 0
+        for kw in keywords:
+            if kw and kw in clean_text:
+                score += len(kw)  # longer keyword match gets higher weight
+        if score > best_score:
+            best_score = score
+            best_match = f
+            
+    return best_match if best_score > 0 else None
 
 def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
     conn = get_db()
@@ -794,6 +1074,17 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
             
     daily_trends = sorted(trends_dict.values(), key=lambda x: x["date"])
 
+    # Category breakdown
+    cat_stats = {}
+    for t in tickets:
+        cat = t.get("category") or "General"
+        if cat not in cat_stats:
+            cat_stats[cat] = {"category": cat, "total": 0, "resolved": 0}
+        cat_stats[cat]["total"] += 1
+        if t["status"] in ("closed", "resolved"):
+            cat_stats[cat]["resolved"] += 1
+    categories_breakdown = sorted(cat_stats.values(), key=lambda x: x["total"], reverse=True)
+
     # Overall CSAT
     all_ratings = [int(t["rating"]) for t in tickets if t.get("rating") is not None]
     overall_avg_rating = round(sum(all_ratings) / len(all_ratings), 1) if all_ratings else None
@@ -814,6 +1105,7 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
         },
         "technicians": technicians,
         "daily_trends": daily_trends,
+        "categories": categories_breakdown,
         "tickets": tickets
     }
 
