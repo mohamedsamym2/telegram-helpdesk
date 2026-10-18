@@ -218,7 +218,8 @@ class CategoryPayload(BaseModel):
     category: str
 
 class InternalNotePayload(BaseModel):
-    text: str
+    text: Optional[str] = None
+    note: Optional[str] = None
 
 class CannedPayload(BaseModel):
     title: str
@@ -427,11 +428,11 @@ async def add_ticket_internal_note(ticket_id: int, payload: InternalNotePayload,
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
         
-    text = payload.text.strip()
-    if not text:
+    note_text = (payload.text or payload.note or "").strip()
+    if not note_text:
         raise HTTPException(status_code=400, detail="Note text cannot be empty")
         
-    msg = add_internal_note(ticket_id, author_name=user, text=text)
+    msg = add_internal_note(ticket_id, author_name=user, text=note_text)
     
     await manager.broadcast({
         "type": "new_message",

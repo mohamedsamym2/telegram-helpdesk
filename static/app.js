@@ -3,6 +3,7 @@
 
 let allTickets = [];
 let currentTicketId = null;
+let currentTicket = null;
 let currentFilter = 'all'; // 'all', 'open', 'in_progress', 'closed'
 let currentQueueFilter = 'all'; // 'all', 'me', 'unassigned'
 let currentCategoryFilter = 'all'; // 'all', 'Network', 'Hardware', etc.
@@ -678,6 +679,7 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
         const data = await res.json();
         const ticket = data.ticket;
         if (!ticket) return;
+        currentTicket = ticket;
 
         // Reveal panel
         document.getElementById('no-ticket-selected').classList.add('hidden');
@@ -1051,14 +1053,15 @@ async function sendReply(e) {
             const res = await fetch(`/api/tickets/${currentTicketId}/notes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ note: text })
+                body: JSON.stringify({ text: text, note: text })
             });
             const data = await res.json();
             if (res.ok) {
                 textarea.value = '';
                 await loadTicketDetails(currentTicketId, true);
             } else {
-                alert('Failed to save internal note: ' + (data.detail || 'Unknown error'));
+                const errDetail = typeof data.detail === 'string' ? data.detail : (Array.isArray(data.detail) ? data.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : JSON.stringify(data.detail || 'Unknown error'));
+                alert('Failed to save internal note: ' + errDetail);
             }
         } catch (err) {
             alert('Server communication error');
@@ -1125,8 +1128,11 @@ async function changeStatus(newStatus) {
 // Open Resolve & Close Ticket Modal with Assignment Verification
 function handleOpenResolveModal() {
     if (!currentTicketId) return;
-    const ticket = cachedTickets.find(t => t.id === currentTicketId);
-    if (!ticket) return;
+    const ticket = currentTicket || allTickets.find(t => t.id == currentTicketId);
+    if (!ticket) {
+        alert('Please select a ticket first.');
+        return;
+    }
 
     // 1. Enforce Assignment check: Cannot resolve unassigned ticket!
     const assigned = ticket.assigned_to && ticket.assigned_to.trim().toLowerCase() !== 'unassigned' ? ticket.assigned_to.trim() : '';
@@ -1200,7 +1206,8 @@ async function submitResolveTicket(e) {
             loadTickets();
             checkBotStatus();
         } else {
-            alert('Failed to resolve ticket: ' + (data.detail || 'Unknown error'));
+            const errDetail = typeof data.detail === 'string' ? data.detail : (Array.isArray(data.detail) ? data.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : JSON.stringify(data.detail || 'Unknown error'));
+            alert('Failed to resolve ticket: ' + errDetail);
         }
     } catch (err) {
         alert('Server communication error');
