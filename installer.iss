@@ -47,8 +47,8 @@ Source: "static\*"; DestDir: "{app}\static"; Flags: ignoreversion recursesubdirs
 ; Background starter and stopper scripts
 Source: "start_server.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "stop_server.bat"; DestDir: "{app}"; Flags: ignoreversion
-; Template database (never overwritten on reinstall, never deleted on uninstall to protect tickets)
-Source: "helpdesk.db"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
+; Clean Template database for new client / company (never overwritten on reinstall, never deleted on uninstall to protect tickets)
+Source: "helpdesk_clean.db"; DestDir: "{app}"; DestName: "helpdesk.db"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#MyAppName} Dashboard"; Filename: "http://localhost:8080"

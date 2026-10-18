@@ -17,8 +17,8 @@ COPY . .
 # Ensure upload directory exists and has write permissions
 RUN mkdir -p /app/static/uploads && chmod -R 777 /app/static/uploads
 
-# Expose port 7860 (Hugging Face default)
-EXPOSE 7860
+# Expose application port
+EXPOSE 8080
 
 # Run FastAPI server
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

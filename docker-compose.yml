@@ -1,0 +1,13 @@
+services:
+  helpdesk:
+    build: .
+    container_name: it-support-helpdesk
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./helpdesk_clean.db:/app/helpdesk.db
+      - ./static/uploads:/app/static/uploads
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0

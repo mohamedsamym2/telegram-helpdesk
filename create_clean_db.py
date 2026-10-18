@@ -84,7 +84,10 @@ def generate_clean_database():
         sla_breach_sent INTEGER DEFAULT 0,
         rating INTEGER DEFAULT NULL,
         rating_comment TEXT DEFAULT NULL,
-        rated_at TEXT DEFAULT NULL
+        rated_at TEXT DEFAULT NULL,
+        last_sender_type TEXT DEFAULT 'user',
+        sla_paused INTEGER DEFAULT 0,
+        sla_paused_at TEXT DEFAULT NULL
     )
     """)
     cursor.execute("CREATE INDEX idx_tickets_user_status ON tickets(telegram_user_id, status)")
