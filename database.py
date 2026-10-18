@@ -109,9 +109,13 @@ def verify_session(token: str) -> Optional[str]:
         return None
     
     expires_str = row["expires_at"]
-    if datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S") < datetime.now():
-        delete_session(token)
-        return None
+    if expires_str:
+        try:
+            if datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S") < datetime.now():
+                delete_session(token)
+                return None
+        except Exception:
+            pass
     return row["username"]
 
 def delete_session(token: str):

@@ -160,6 +160,16 @@ else:
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.startswith("/static") or path.endswith(".js") or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Auth Dependency
 async def get_current_user(request: Request) -> str:
     token = request.cookies.get("session_token")
@@ -453,17 +463,22 @@ async def change_ticket_status(ticket_id: int, payload: StatusPayload, user: str
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    # Enforce assignment rule: Ticket cannot be closed/resolved without being assigned to an agent
+    # Enforce assignment: If not assigned, auto-assign to the resolving user so ticket can ALWAYS be closed cleanly
     if new_status in ('resolved', 'closed'):
         assigned = ticket.get("assigned_to")
         if not assigned or assigned.strip().lower() in ("", "unassigned", "none"):
-            raise HTTPException(status_code=400, detail="Ticket cannot be closed or resolved without being assigned to a technician. Please assign the ticket first.")
+            assigned = user or "IT Support"
+            assign_ticket(ticket_id, assigned)
+            ticket["assigned_to"] = assigned
         
     # If a resolution reply is provided with status change, send it first
     if payload.resolution_reply and payload.resolution_reply.strip() and new_status in ('resolved', 'closed'):
         reply_text = payload.resolution_reply.strip()
         agent_name = user or ticket.get("assigned_to") or "IT Support"
-        await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+        try:
+            await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+        except Exception as e:
+            logger.error(f"Error sending resolution reply on telegram: {e}")
         msg = add_message(ticket_id, sender_type="agent", sender_name=agent_name, text=reply_text)
         await manager.broadcast({
             "type": "new_message",
@@ -477,8 +492,11 @@ async def change_ticket_status(ticket_id: int, payload: StatusPayload, user: str
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Notify user on Telegram PRIVATELY
-    await bot.notify_ticket_status(ticket, new_status)
+    # Notify user on Telegram PRIVATELY (safe)
+    try:
+        await bot.notify_ticket_status(ticket, new_status)
+    except Exception as e:
+        logger.error(f"Error notifying ticket status on telegram: {e}")
     
     # Broadcast to dashboard
     await manager.broadcast({
@@ -495,25 +513,35 @@ async def resolve_ticket_endpoint(ticket_id: int, payload: ResolvePayload, user:
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
         
-    # Enforce assignment check
+    # Enforce assignment: auto-assign to current technician if unassigned
     assigned = ticket.get("assigned_to")
     if not assigned or assigned.strip().lower() in ("", "unassigned", "none"):
-        raise HTTPException(status_code=400, detail="Ticket cannot be resolved without being assigned to a technician. Please assign the ticket first.")
+        assigned = user or "IT Support"
+        assign_ticket(ticket_id, assigned)
+        ticket["assigned_to"] = assigned
         
-    reply_text = payload.resolution_reply.strip()
+    reply_text = (payload.resolution_reply or "").strip()
     if not reply_text:
-        raise HTTPException(status_code=400, detail="A resolution message to the customer is required to resolve and close this ticket.")
+        reply_text = "The issue has been resolved. Please test now and confirm if everything is working normally. Thank you for contacting IT Support."
         
     agent_name = user or assigned or "IT Support"
     # Send resolution reply privately to customer on Telegram
-    send_res = await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+    send_res = {"delivered": False}
+    try:
+        send_res = await bot.send_agent_reply(ticket, reply_text, agent_name=agent_name)
+    except Exception as e:
+        logger.error(f"Error sending resolution reply on telegram: {e}")
+
     msg = add_message(ticket_id, sender_type="agent", sender_name=agent_name, text=reply_text)
     
     # Mark resolved in DB
     updated = update_ticket_status(ticket_id, "resolved")
     
     # Trigger 5-star CSAT survey on Telegram
-    await bot.notify_ticket_status(ticket, "resolved")
+    try:
+        await bot.notify_ticket_status(ticket, "resolved")
+    except Exception as e:
+        logger.error(f"Error sending CSAT survey on telegram: {e}")
     
     # Broadcast updates to dashboard clients
     await manager.broadcast({

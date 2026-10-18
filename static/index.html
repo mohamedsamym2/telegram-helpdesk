@@ -897,8 +897,12 @@
                 </div>
 
                 <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-700">
-                    <button type="button" onclick="closeResolveModal()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold transition">
+                    <button type="button" onclick="closeResolveModal()" class="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold transition">
                         Cancel
+                    </button>
+                    <button type="button" onclick="quickResolveTicket()" class="px-4 py-2 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Close immediately with standard resolution message">
+                        <i class="fa-solid fa-bolt text-xs"></i>
+                        <span>Quick Close</span>
                     </button>
                     <button type="submit" id="btn-submit-resolve" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition active:scale-95">
                         <i class="fa-solid fa-check"></i>
@@ -915,6 +919,6 @@
     </div>
 
     <!-- App JS -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2.6"></script>
 </body>
 </html>

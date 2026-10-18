@@ -924,10 +924,11 @@ async function assignTicket(ticketId, username) {
             const data = await res.json();
             const idx = allTickets.findIndex(t => t.id === ticketId);
             if (idx !== -1) allTickets[idx] = data.ticket;
-            renderTicketsList();
             if (currentTicketId === ticketId) {
+                currentTicket = data.ticket;
                 renderAssignmentControls(data.ticket);
             }
+            renderTicketsList();
             loadTickets();
         } else {
             alert('Failed to assign ticket');
@@ -1125,20 +1126,28 @@ async function changeStatus(newStatus) {
     }
 }
 
-// Open Resolve & Close Ticket Modal with Assignment Verification
-function handleOpenResolveModal() {
+// Open Resolve & Close Ticket Modal with Auto-Assignment
+async function handleOpenResolveModal() {
     if (!currentTicketId) return;
-    const ticket = currentTicket || allTickets.find(t => t.id == currentTicketId);
+    let ticket = currentTicket || allTickets.find(t => t.id == currentTicketId);
     if (!ticket) {
         alert('Please select a ticket first.');
         return;
     }
 
-    // 1. Enforce Assignment check: Cannot resolve unassigned ticket!
-    const assigned = ticket.assigned_to && ticket.assigned_to.trim().toLowerCase() !== 'unassigned' ? ticket.assigned_to.trim() : '';
+    // Auto-assign if not assigned so technician is NEVER blocked from closing
+    let assigned = ticket.assigned_to && ticket.assigned_to.trim().toLowerCase() !== 'unassigned' ? ticket.assigned_to.trim() : '';
     if (!assigned) {
-        alert('⚠️ Assignment Required:\nThis ticket must be assigned to an IT technician before it can be resolved & closed.\n\nPlease assign the ticket or click "Take Ticket" first.');
-        return;
+        const autoAssignee = currentUser || 'admin';
+        try {
+            await assignTicket(ticket.id, autoAssignee);
+            assigned = autoAssignee;
+            ticket.assigned_to = autoAssignee;
+            if (currentTicket) currentTicket.assigned_to = autoAssignee;
+        } catch(e) {
+            console.error('Auto-assign error:', e);
+            assigned = autoAssignee;
+        }
     }
 
     // Populate modal details
@@ -1147,7 +1156,7 @@ function handleOpenResolveModal() {
     const elAssignee = document.getElementById('resolve-modal-assignee');
     if (elTicketNum) elTicketNum.textContent = `#${ticket.ticket_number || ticket.id}`;
     if (elUser) elUser.textContent = `${ticket.user_name || 'User'} (${ticket.username ? '@' + ticket.username : 'No username'})`;
-    if (elAssignee) elAssignee.textContent = assigned;
+    if (elAssignee) elAssignee.textContent = assigned || (currentUser || 'IT Support');
 
     // Pre-fill default resolution template
     setResolveTemplate('resolved_confirm');
@@ -1177,15 +1186,22 @@ function setResolveTemplate(tplKey) {
     textarea.focus();
 }
 
+async function quickResolveTicket() {
+    const textarea = document.getElementById('resolve-reply-text');
+    if (textarea && !textarea.value.trim()) {
+        textarea.value = 'The issue has been resolved. Please test now and confirm if everything is working normally. Thank you for contacting IT Support.';
+    }
+    await submitResolveTicket();
+}
+
 async function submitResolveTicket(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!currentTicketId) return;
 
     const textarea = document.getElementById('resolve-reply-text');
-    const text = textarea ? textarea.value.trim() : '';
+    let text = textarea ? textarea.value.trim() : '';
     if (!text) {
-        alert('Please provide a resolution explanation message to the customer.');
-        return;
+        text = 'The issue has been resolved. Please test now and confirm if everything is working normally. Thank you for contacting IT Support.';
     }
 
     const btn = document.getElementById('btn-submit-resolve');
