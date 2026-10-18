@@ -169,6 +169,9 @@ def init_db():
         ("first_response_at", "TEXT DEFAULT NULL"),
         ("sla_deadline", "TEXT DEFAULT NULL"),
         ("sla_breached", "INTEGER DEFAULT 0"),
+        ("rating", "INTEGER DEFAULT NULL"),
+        ("rating_comment", "TEXT DEFAULT NULL"),
+        ("rated_at", "TEXT DEFAULT NULL"),
     ]
     for col_name, col_type in columns_to_add:
         try:
@@ -469,6 +472,21 @@ def update_ticket_status(ticket_id: int, status: str) -> Optional[Dict[str, Any]
     conn.close()
     return dict(row) if row else None
 
+def save_ticket_rating(ticket_id: int, rating: int, comment: str = "") -> Dict[str, Any]:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE tickets 
+        SET rating = ?, rating_comment = ?, rated_at = ?, updated_at = ?
+        WHERE id = ?
+    """, (rating, comment.strip() if comment else None, now, now, ticket_id))
+    conn.commit()
+    cursor.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+    ticket = dict(cursor.fetchone())
+    conn.close()
+    return ticket
+
 def add_message(ticket_id: int, sender_type: str, sender_name: str, text: str, 
                 media_type: str = "text", media_url: str = "", telegram_message_id: int = 0) -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -609,6 +627,15 @@ def get_stats(agent_username: Optional[str] = None) -> Dict[str, Any]:
         "unassigned": unassigned_total,
         "assigned_to_me": mine_total
     }
+    
+    # Calculate CSAT average rating
+    cursor.execute("SELECT AVG(rating), COUNT(rating) FROM tickets WHERE rating IS NOT NULL")
+    r_row = cursor.fetchone()
+    stats["avg_rating"] = round(r_row[0], 1) if (r_row and r_row[0] is not None) else None
+    stats["rated_count"] = r_row[1] if r_row else 0
+    
+    conn.close()
+    return stats
 
 def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
     conn = get_db()
@@ -692,14 +719,16 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
             "total_handled": 0,
             "resolved": 0,
             "sla_breached": 0,
-            "resolution_times": []
+            "resolution_times": [],
+            "ratings": []
         }
     tech_stats["Unassigned"] = {
         "username": "Unassigned",
         "total_handled": 0,
         "resolved": 0,
         "sla_breached": 0,
-        "resolution_times": []
+        "resolution_times": [],
+        "ratings": []
     }
 
     for t in tickets:
@@ -710,7 +739,8 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
                 "total_handled": 0,
                 "resolved": 0,
                 "sla_breached": 0,
-                "resolution_times": []
+                "resolution_times": [],
+                "ratings": []
             }
         tech_stats[assignee]["total_handled"] += 1
         if t["status"] in ("closed", "resolved"):
@@ -726,6 +756,11 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
                         tech_stats[assignee]["resolution_times"].append(diff)
                 except Exception:
                     pass
+            if t.get("rating") is not None:
+                try:
+                    tech_stats[assignee]["ratings"].append(int(t["rating"]))
+                except Exception:
+                    pass
 
     technicians = []
     for u, data in tech_stats.items():
@@ -733,12 +768,16 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
         sla_met = max(0, res_count - data["sla_breached"])
         sla_pct = round((sla_met / res_count * 100), 1) if res_count > 0 else 100.0
         avg_res = round(sum(data["resolution_times"]) / len(data["resolution_times"]), 1) if data["resolution_times"] else 0.0
+        tech_ratings = data["ratings"]
+        avg_r = round(sum(tech_ratings) / len(tech_ratings), 1) if tech_ratings else None
         technicians.append({
             "username": u,
             "total_handled": data["total_handled"],
             "resolved": res_count,
             "sla_compliance_rate": sla_pct,
-            "avg_resolution_mins": avg_res
+            "avg_resolution_mins": avg_res,
+            "avg_rating": avg_r,
+            "rated_count": len(tech_ratings)
         })
     # Sort technicians by resolved count descending
     technicians.sort(key=lambda x: x["resolved"], reverse=True)
@@ -755,6 +794,10 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
             
     daily_trends = sorted(trends_dict.values(), key=lambda x: x["date"])
 
+    # Overall CSAT
+    all_ratings = [int(t["rating"]) for t in tickets if t.get("rating") is not None]
+    overall_avg_rating = round(sum(all_ratings) / len(all_ratings), 1) if all_ratings else None
+
     conn.close()
     return {
         "summary": {
@@ -765,7 +808,9 @@ def get_analytics_report(start_date: Optional[str] = None, end_date: Optional[st
             "sla_breached_count": sla_breached_count,
             "sla_compliance_rate": sla_compliance_rate,
             "avg_resolution_mins": avg_resolution_mins,
-            "avg_first_response_mins": avg_first_response_mins
+            "avg_first_response_mins": avg_first_response_mins,
+            "avg_rating": overall_avg_rating,
+            "rated_count": len(all_ratings)
         },
         "technicians": technicians,
         "daily_trends": daily_trends,

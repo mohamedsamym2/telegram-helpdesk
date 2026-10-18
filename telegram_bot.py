@@ -9,7 +9,8 @@ from database import (
     get_setting, set_setting, get_active_ticket_for_user,
     create_ticket, update_ticket_phone, add_message, update_ticket_status,
     get_ticket_details, update_ticket_last_message_id,
-    save_user_profile, get_user_profile, get_latest_phone_for_user
+    save_user_profile, get_user_profile, get_latest_phone_for_user,
+    save_ticket_rating
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -185,16 +186,29 @@ class TelegramBot:
         
         # Send status update privately to the user
         if new_status in ("resolved", "closed"):
+            survey_keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "⭐ 1", "callback_data": f"rate:{ticket['id']}:1"},
+                        {"text": "⭐⭐ 2", "callback_data": f"rate:{ticket['id']}:2"},
+                        {"text": "⭐⭐⭐ 3", "callback_data": f"rate:{ticket['id']}:3"},
+                        {"text": "⭐⭐⭐⭐ 4", "callback_data": f"rate:{ticket['id']}:4"},
+                        {"text": "⭐⭐⭐⭐⭐ 5", "callback_data": f"rate:{ticket['id']}:5"},
+                    ]
+                ]
+            }
             text = (
-                f"✅ <b>Ticket {ticket_num} has been resolved and closed!</b>\n\n"
-                f"Thank you for contacting IT Support. If you experience any further issues, "
-                f"feel free to send a message anytime to open a new ticket. Have a great day! 🌸"
+                f"✅ <b>تم حل التذكرة {ticket_num} بنجاح!</b>\n\n"
+                f"شكراً لتواصلك مع فريق الدعم الفني IT Support. 🙏\n\n"
+                f"🌟 <b>رأيك يهمنا لتطوير مستوى الخدمة:</b>\n"
+                f"كيف تقيّم تجربتك مع الدعم الفني لحل هذه المشكلة؟\n"
+                f"<i>(اضغط على عدد النجوم من 1 إلى 5 لتقييم الدعم)</i>"
             )
-            await self.send_message(user_id, text, reply_markup={"remove_keyboard": True})
+            await self.send_message(user_id, text, reply_markup=survey_keyboard)
         elif new_status == "in_progress":
             text = (
-                f"⚙️ <b>Ticket {ticket_num} Update:</b>\n\n"
-                f"Our IT Support team has started working on your request."
+                f"⚙️ <b>تحديث التذكرة {ticket_num}:</b>\n\n"
+                f"فريق الدعم الفني بدأ العمل على طلبك لحل المشكلة."
             )
             await self.send_message(user_id, text)
 
@@ -549,13 +563,78 @@ class TelegramBot:
                     "ticket": ticket_full
                 })
 
+    async def _handle_callback_query(self, cb: Dict[str, Any]):
+        cb_id = cb.get("id")
+        data = cb.get("data", "")
+        from_user = cb.get("from", {})
+        msg = cb.get("message", {})
+        chat = msg.get("chat", {})
+        chat_id = chat.get("id")
+        message_id = msg.get("message_id")
+
+        if data.startswith("rate:"):
+            # format: rate:{ticket_id}:{rating_1_to_5}
+            parts = data.split(":")
+            if len(parts) == 3:
+                try:
+                    ticket_id = int(parts[1])
+                    rating = int(parts[2])
+
+                    # Save rating in database
+                    updated_ticket = save_ticket_rating(ticket_id, rating)
+                    stars_str = "⭐" * rating
+
+                    # 1. Answer Telegram callback query (shows quick feedback banner)
+                    ans_url = f"https://api.telegram.org/bot{self.token}/answerCallbackQuery"
+                    await self.client.post(ans_url, json={
+                        "callback_query_id": cb_id,
+                        "text": f"شكراً لك! تم تسجيل تقييمك ({stars_str}) بنجاح. 🌟",
+                        "show_alert": False
+                    })
+
+                    # 2. Edit original message to show confirmed stars and remove buttons
+                    ticket_num = updated_ticket.get("ticket_number", f"TK-{ticket_id}") if updated_ticket else f"TK-{ticket_id}"
+                    thank_you_text = (
+                        f"✅ <b>تم حل التذكرة {ticket_num} وإغلاقها</b>\n\n"
+                        f"🙏 <b>شكراً جزيلاً لتقييمك!</b>\n"
+                        f"تم تسجيل تقييمك: <b>{stars_str}</b> ({rating} من 5)\n\n"
+                        f"نسعد دائماً بخدمتك ونتمنى لك يوماً سعيداً! 🌸"
+                    )
+                    edit_url = f"https://api.telegram.org/bot{self.token}/editMessageText"
+                    await self.client.post(edit_url, json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": thank_you_text,
+                        "parse_mode": "HTML"
+                    })
+
+                    # 3. Add system message in ticket log
+                    add_message(
+                        ticket_id=ticket_id,
+                        sender_type="user",
+                        sender_name=from_user.get("first_name", "User"),
+                        text=f"🌟 تقييم رضا العميل: {stars_str} ({rating}/5)"
+                    )
+
+                    # 4. Broadcast live update to Dashboard via WebSocket
+                    if self.broadcast:
+                        await self.broadcast({
+                            "type": "ticket_rated",
+                            "ticket_id": ticket_id,
+                            "ticket_number": ticket_num,
+                            "rating": rating,
+                            "rated_at": updated_ticket.get("rated_at") if updated_ticket else ""
+                        })
+                except Exception as e:
+                    logger.error(f"Error handling rating callback query: {e}", exc_info=True)
+
     async def _poll_loop(self):
         offset = 0
         logger.info("Long polling loop started.")
         while self.is_running:
             try:
                 url = f"https://api.telegram.org/bot{self.token}/getUpdates"
-                params = {"offset": offset, "timeout": 25, "allowed_updates": ["message", "edited_message"]}
+                params = {"offset": offset, "timeout": 25, "allowed_updates": ["message", "edited_message", "callback_query"]}
                 res = await self.client.get(url, params=params, timeout=35.0)
                 
                 if res.status_code == 200:
@@ -567,7 +646,10 @@ class TelegramBot:
                             offset = max(offset, update_id + 1)
                             logger.info(f"Incoming update #{update_id}: {u}")
                             try:
-                                await self._handle_update(u)
+                                if "callback_query" in u:
+                                    await self._handle_callback_query(u["callback_query"])
+                                elif "message" in u or "edited_message" in u:
+                                    await self._handle_update(u)
                             except Exception as e:
                                 logger.error(f"Error handling single update: {e}", exc_info=True)
                     else:

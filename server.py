@@ -446,11 +446,13 @@ async def export_reports_csv(start_date: Optional[str] = None, end_date: Optiona
     writer.writerow([
         "Ticket Number", "Created At", "Requester Name", "Username", "Phone",
         "Source Chat", "Subject", "Status", "Priority", "Assigned Technician",
-        "First Response At", "Closed At", "SLA Deadline", "SLA Status"
+        "First Response At", "Closed At", "SLA Deadline", "SLA Status",
+        "Customer Rating (1-5)", "Rated At"
     ])
     
     for t in tickets:
         sla_status = "Breached" if t.get("sla_breached") else "Met / On Track"
+        rating_str = f"{t['rating']} Stars" if t.get("rating") else "Not Rated"
         writer.writerow([
             t.get("ticket_number", ""),
             t.get("created_at", ""),
@@ -465,7 +467,9 @@ async def export_reports_csv(start_date: Optional[str] = None, end_date: Optiona
             t.get("first_response_at", ""),
             t.get("closed_at", ""),
             t.get("sla_deadline", ""),
-            sla_status
+            sla_status,
+            rating_str,
+            t.get("rated_at", "")
         ])
         
     csv_content = output.getvalue()

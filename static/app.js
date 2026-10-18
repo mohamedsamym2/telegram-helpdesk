@@ -268,6 +268,12 @@ function handleWsEvent(event) {
         if (currentTicketId === event.ticket_id) {
             loadTicketDetails(currentTicketId, false);
         }
+    } else if (event.type === 'ticket_rated') {
+        playDing();
+        loadTickets();
+        if (currentTicketId === event.ticket_id) {
+            loadTicketDetails(currentTicketId, false);
+        }
     }
 }
 
@@ -503,6 +509,9 @@ function renderTicketsList() {
         const phone = t.phone_number ? `<span class="text-emerald-400 font-mono text-[10px] flex items-center gap-1"><i class="fa-solid fa-phone text-[9px]"></i>${escapeHtml(t.phone_number)}</span>` : '<span class="text-slate-500 text-[10px]">No phone</span>';
         const snippet = t.last_message || t.subject || 'New ticket';
         const isGroup = (t.chat_type === 'group' || t.chat_type === 'supergroup');
+        const ratingPill = t.rating 
+            ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35 flex items-center gap-1 shadow-sm whitespace-nowrap">⭐ ${t.rating}</span>` 
+            : '';
         
         const assigneeBadge = t.assigned_to 
             ? `<span class="text-[10px] text-indigo-300 flex items-center gap-1 font-semibold truncate max-w-[105px]"><i class="fa-solid fa-user-check text-[9px] text-indigo-400"></i>${escapeHtml(t.assigned_to === currentUser ? 'You' : t.assigned_to)}</span>`
@@ -515,6 +524,7 @@ function renderTicketsList() {
                         <span class="font-mono text-xs font-bold text-indigo-400">${escapeHtml(t.ticket_number)}</span>
                         ${priorityBadge}
                         ${statusBadge}
+                        ${ratingPill}
                     </div>
                     <span class="text-[10px] text-slate-500 shrink-0">${timeAgo}</span>
                 </div>
@@ -620,6 +630,24 @@ async function loadTicketDetails(ticketId, shouldScrollBottom = true) {
 
         // Assignment Controls
         renderAssignmentControls(ticket);
+
+        // CSAT Customer Rating Badge
+        const ratingBadge = document.getElementById('ticket-rating-badge');
+        const ratingText = document.getElementById('ticket-rating-text');
+        if (ratingBadge && ratingText) {
+            if (ticket.rating) {
+                const stars = "⭐".repeat(ticket.rating);
+                ratingText.textContent = `${stars} (${ticket.rating}/5)`;
+                ratingBadge.className = 'px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35 text-[11px] font-mono flex items-center gap-1.5 text-amber-300 whitespace-nowrap shadow-sm';
+                ratingBadge.classList.remove('hidden');
+            } else if (ticket.status === 'closed' || ticket.status === 'resolved') {
+                ratingText.textContent = 'Survey: Pending rating';
+                ratingBadge.className = 'px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-[11px] font-sans flex items-center gap-1.5 text-slate-400 whitespace-nowrap shadow-sm';
+                ratingBadge.classList.remove('hidden');
+            } else {
+                ratingBadge.classList.add('hidden');
+            }
+        }
 
         // Check if ticket is closed/resolved (Locked State)
         const isLocked = ticket.status === 'resolved' || ticket.status === 'closed';
@@ -1032,17 +1060,25 @@ function renderReportUI(report) {
     document.getElementById('kpi-avg-resolution').textContent = avgResStr;
     document.getElementById('kpi-first-response').textContent = `Avg first response: ${s.avg_first_response_mins || 0}m`;
 
+    // CSAT KPI
+    const avgRating = s.avg_rating;
+    document.getElementById('kpi-avg-rating').textContent = avgRating ? `⭐ ${avgRating}` : '⭐ --';
+    document.getElementById('kpi-rating-count').textContent = `${s.rated_count || 0} ratings`;
+
     // Team Leaderboard Table
     const teamTbody = document.getElementById('team-performance-tbody');
     const techs = report.technicians || [];
     if (techs.length === 0) {
-        teamTbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500">No technician activity recorded</td></tr>`;
+        teamTbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-500">No technician activity recorded</td></tr>`;
     } else {
         teamTbody.innerHTML = techs.map((t, idx) => {
             const isTop = idx === 0 && t.resolved > 0;
             const rankIcon = isTop ? '<i class="fa-solid fa-crown text-amber-400 mr-1.5 text-xs"></i>' : '';
             let avgTime = `${t.avg_resolution_mins}m`;
             if (t.avg_resolution_mins >= 60) avgTime = `${(t.avg_resolution_mins / 60).toFixed(1)}h`;
+            const csatCell = t.avg_rating 
+                ? `<span class="text-amber-300 font-bold">⭐ ${t.avg_rating}</span> <span class="text-slate-500 text-[10px]">(${t.rated_count})</span>` 
+                : '<span class="text-slate-500">--</span>';
             
             return `
                 <tr class="hover:bg-slate-800/40 transition">
@@ -1054,6 +1090,7 @@ function renderReportUI(report) {
                     <td class="py-2.5 px-4 text-center font-mono font-bold text-emerald-400">${t.resolved}</td>
                     <td class="py-2.5 px-4 text-center font-mono text-slate-300">${avgTime}</td>
                     <td class="py-2.5 px-4 text-center font-mono font-semibold ${t.sla_compliance_rate >= 90 ? 'text-indigo-400' : 'text-amber-400'}">${t.sla_compliance_rate}%</td>
+                    <td class="py-2.5 px-4 text-center font-mono">${csatCell}</td>
                 </tr>
             `;
         }).join('');
@@ -1065,13 +1102,16 @@ function renderReportUI(report) {
     document.getElementById('report-ticket-count').textContent = `${tickets.length} tickets`;
     
     if (tickets.length === 0) {
-        ticketsTbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-500">No tickets found in this period</td></tr>`;
+        ticketsTbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-500">No tickets found in this period</td></tr>`;
     } else {
         ticketsTbody.innerHTML = tickets.map(t => {
             const slaStatus = t.sla_breached 
                 ? '<span class="text-rose-400 font-bold">Breached</span>' 
                 : '<span class="text-emerald-400 font-semibold">Met</span>';
             const statusClass = t.status === 'closed' ? 'text-emerald-400' : 'text-amber-400';
+            const ratingDisplay = t.rating 
+                ? `<span class="text-amber-300 font-bold">⭐ ${t.rating}</span>` 
+                : '<span class="text-slate-500">--</span>';
             
             return `
                 <tr class="hover:bg-slate-800/40 transition">
@@ -1082,6 +1122,7 @@ function renderReportUI(report) {
                     <td class="py-2 px-3 text-center font-sans text-slate-300">${escapeHtml(t.assigned_to || 'Unassigned')}</td>
                     <td class="py-2 px-3 text-center ${statusClass} uppercase font-bold text-[10px]">${t.status}</td>
                     <td class="py-2 px-3 text-center text-[10px]">${slaStatus}</td>
+                    <td class="py-2 px-3 text-center text-[10px] font-mono">${ratingDisplay}</td>
                 </tr>
             `;
         }).join('');
